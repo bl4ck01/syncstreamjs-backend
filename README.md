@@ -192,8 +192,4 @@ The schema now includes:
 3. Implement rate limiting
 4. Add comprehensive test suite
 5. Set up monitoring and logging
-<<<<<<< Current (Your changes)
-6. Add comprehensive test suite
-=======
 6. Add API documentation (OpenAPI/Swagger)
->>>>>>> Incoming (Background Agent changes)
