@@ -4,14 +4,12 @@ const BASE_URL = 'http://localhost:3000';
 // Test data
 const testUser = {
     email: 'test@example.com',
-    username: 'testuser',
     password: 'password123',
     full_name: 'Test User'
 };
 
 const adminUser = {
     email: 'admin@syncstream.tv',
-    username: 'admin',
     password: 'admin123'
 };
 
@@ -84,11 +82,7 @@ async function runTests() {
         authToken = await extractAuthToken(loginResult.response);
     }
     
-    // Login with username
-    await testEndpoint('Login with Username', 'POST', '/auth/login', {
-        username: testUser.username,
-        password: testUser.password
-    });
+    // Login test already covered above
     
     // Get current user
     await testEndpoint('Get Current User', 'GET', '/auth/me', null, authToken);

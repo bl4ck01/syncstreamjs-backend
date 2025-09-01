@@ -6,7 +6,9 @@ The application's source of truth for a user's permissions and limits is their *
 ## 0. Technology Mandate
 - **Rule 0.1 (Runtime & Package Manager):** The Bun runtime and package manager **must** be used exclusively. The use of `npm`, `yarn`, or `pnpm` is explicitly forbidden for dependency management, script execution, and running the application.
 - **Rule 0.2 (Programming Language):** The codebase **must** be written in JavaScript (.js files). The use of TypeScript (.ts files) or any other language that requires a compile-to-JS step is explicitly forbidden.
-- **Rule 0.3 (Package installation):** use bun add and do not insert the packages directly to package.js
+- **Rule 0.3 (Package installation):** Use `bun add` and do not insert packages directly to package.json
+- **Rule 0.4 (Authentication):** Users authenticate with email only. No username field is used.
+- **Rule 0.5 (Authorization):** Use a single `role` column with values: 'user', 'reseller', 'admin'. No boolean flags for roles.
 
 ## 1. Subscription & Payment Rules
 
@@ -44,7 +46,7 @@ The application's source of truth for a user's permissions and limits is their *
 - **Rule 2.3.1 (Profile Context in JWT):** The active profile for a user's session must be stored in the JWT token via the `POST /auth/profile/:id/select` endpoint.
 - **Rule 2.3.2 (Profile Selection):** The profile selection endpoint must:
     1.  Verify the profile belongs to the user.
-    2.  Verify the provided PIN against the profile's `parental_pin_hash` if one is set.
+    2.  Verify the provided PIN against the profile's `parental_pin` (plain text comparison).
     3.  Issue a new JWT with the `current_profile_id` claim.
 - **Rule 2.3.3 (Profile-Scoped Endpoints):** Endpoints like `GET /favorites` must use the `current_profile_id` from the JWT to scope their response, not a parameter.
 
@@ -76,8 +78,9 @@ The application's source of truth for a user's permissions and limits is their *
 ## 5. Data Handling & Security Rules
 
 ### 5.1. Sensitive Data
-- **Rule 5.1.1 (Playlist Password Encryption):** The `password` field in the `playlists` table **must** be encrypted at rest using a strong algorithm (e.g., AES-256). The encryption key must be from an environment variable.
-- **Rule 5.1.2 (PIN Hashing):** Profile parental PINs must be stored as a hash (bcrypt) in `profiles.parental_pin_hash`.
+- **Rule 5.1.1 (Playlist Password Storage):** The `password` field in the `playlists` table is stored as plain text (per updated requirements).
+- **Rule 5.1.2 (PIN Storage):** Profile parental PINs are stored as plain text in `profiles.parental_pin` (per updated requirements).
+- **Rule 5.1.3 (User Password Security):** User account passwords must still be hashed using bcrypt for security.
 
 ### 5.2. API Response Format
 - **Rule 5.2.1 (Standardized Response):** All API responses must follow the format:

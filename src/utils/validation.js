@@ -4,16 +4,12 @@ import { z } from 'zod';
 export const signupSchema = z.object({
     email: z.string().email(),
     password: z.string().min(8),
-    username: z.string().min(3).max(50),
     full_name: z.string().optional()
 });
 
 export const loginSchema = z.object({
-    email: z.string().email().optional(),
-    username: z.string().optional(),
+    email: z.string().email(),
     password: z.string()
-}).refine(data => data.email || data.username, {
-    message: "Either email or username must be provided"
 });
 
 // Profile schemas
@@ -78,7 +74,6 @@ export const changePlanSchema = z.object({
 export const createClientSchema = z.object({
     email: z.string().email(),
     password: z.string().min(8),
-    username: z.string().min(3).max(50),
     full_name: z.string().optional(),
     plan_stripe_price_id: z.string().min(1)
 });

@@ -9,7 +9,7 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
     .guard({
         beforeHandle: async ({ getUser, set }) => {
             const user = await getUser();
-            if (!user || !user.is_admin) {
+            if (!user || user.role !== 'admin') {
                 set.status = 403;
                 throw new Error('Forbidden: Admin access required');
             }
@@ -25,16 +25,15 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
         const params = [limit, offset];
 
         if (search) {
-            whereClause = 'WHERE email ILIKE $3 OR username ILIKE $3 OR full_name ILIKE $3';
+            whereClause = 'WHERE email ILIKE $3 OR full_name ILIKE $3';
             params.push(`%${search}%`);
         }
 
         const users = await db.getMany(`
             SELECT 
-                id, email, username, full_name, 
-                has_used_trial, is_reseller, is_admin,
-                credits_balance, parent_reseller_id,
-                created_at
+                id, email, full_name, role,
+                has_used_trial, credits_balance, 
+                parent_reseller_id, created_at
             FROM users 
             ${whereClause}
             ORDER BY created_at DESC
@@ -202,7 +201,8 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
         const userStats = await db.getOne(`
             SELECT 
                 COUNT(*) as total_users,
-                COUNT(CASE WHEN is_reseller = TRUE THEN 1 END) as total_resellers,
+                COUNT(CASE WHEN role = 'reseller' THEN 1 END) as total_resellers,
+                COUNT(CASE WHEN role = 'admin' THEN 1 END) as total_admins,
                 COUNT(CASE WHEN has_used_trial = TRUE THEN 1 END) as trials_used
             FROM users
         `);
@@ -230,6 +230,7 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
             users: {
                 total: parseInt(userStats.total_users),
                 resellers: parseInt(userStats.total_resellers),
+                admins: parseInt(userStats.total_admins),
                 trials_used: parseInt(userStats.trials_used)
             },
             subscriptions: {
@@ -244,40 +245,25 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
         };
     })
 
-    // Toggle user admin status
-    .patch('/users/:id/admin', async ({ params, body, db }) => {
-        const { is_admin } = body;
+    // Update user role
+    .patch('/users/:id/role', async ({ params, body, db }) => {
+        const { role } = body;
 
         await db.query(
-            'UPDATE users SET is_admin = $1 WHERE id = $2',
-            [is_admin, params.id]
+            'UPDATE users SET role = $1 WHERE id = $2',
+            [role, params.id]
         );
 
-        return { message: `User admin status ${is_admin ? 'granted' : 'revoked'}` };
+        return { message: `User role updated to ${role}` };
     }, {
         params: t.Object({
             id: t.String()
         }),
         body: t.Object({
-            is_admin: t.Boolean()
-        })
-    })
-
-    // Toggle user reseller status
-    .patch('/users/:id/reseller', async ({ params, body, db }) => {
-        const { is_reseller } = body;
-
-        await db.query(
-            'UPDATE users SET is_reseller = $1 WHERE id = $2',
-            [is_reseller, params.id]
-        );
-
-        return { message: `User reseller status ${is_reseller ? 'granted' : 'revoked'}` };
-    }, {
-        params: t.Object({
-            id: t.String()
-        }),
-        body: t.Object({
-            is_reseller: t.Boolean()
+            role: t.Union([
+                t.Literal('user'),
+                t.Literal('reseller'),
+                t.Literal('admin')
+            ])
         })
     });

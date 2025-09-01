@@ -5,12 +5,10 @@
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
-    username VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(255),
+    role VARCHAR(50) DEFAULT 'user' CHECK (role IN ('user', 'reseller', 'admin')),
     has_used_trial BOOLEAN DEFAULT FALSE,
-    is_reseller BOOLEAN DEFAULT FALSE,
-    is_admin BOOLEAN DEFAULT FALSE,
     credits_balance INTEGER DEFAULT 0,
     parent_reseller_id UUID REFERENCES users(id) ON DELETE SET NULL,
     stripe_customer_id VARCHAR(255) UNIQUE,
@@ -128,7 +126,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 
 -- Indexes
 CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
 CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX idx_subscriptions_status ON subscriptions(status);
@@ -150,12 +148,11 @@ ON CONFLICT (stripe_price_id) DO NOTHING;
 
 -- Insert default admin user
 -- Password: admin123 (hashed)
-INSERT INTO users (email, username, password_hash, full_name, is_admin)
+INSERT INTO users (email, password_hash, full_name, role)
 VALUES (
     'admin@syncstream.tv',
-    'admin',
     '$2b$12$hSChE5UEwkyj.QyedkKSKODvHLK5cfiCPKXX24C4VbdHswvKiBLxK',
     'System Administrator',
-    TRUE
+    'admin'
 )
 ON CONFLICT (email) DO NOTHING;

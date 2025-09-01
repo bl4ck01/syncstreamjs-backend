@@ -20,6 +20,7 @@ import { progressRoutes } from './routes/progress.js';
 import { subscriptionRoutes } from './routes/subscriptions.js';
 import { webhookRoutes } from './routes/webhooks.js';
 import { adminRoutes } from './routes/admin.js';
+import { resellerRoutes } from './routes/resellers.js';
 
 const app = new Elysia()
   // Global plugins
@@ -41,6 +42,7 @@ const app = new Elysia()
   .use(subscriptionRoutes)
   .use(webhookRoutes)
   .use(adminRoutes)
+  .use(resellerRoutes)
 
   // Root endpoint
   .get('/', () => ({

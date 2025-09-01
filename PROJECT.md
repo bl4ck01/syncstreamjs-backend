@@ -8,18 +8,34 @@
 - **Language:** JavaScript (Mandated. TypeScript is forbidden)
 - **Framework:** Elysia.js
 - **Database:** PostgreSQL
-- **Authentication:** JWT
+- **Authentication:** JWT (email-based only)
 - **Payments:** Stripe
 - **Hosting:** VPS (8Gb Ram/ 6 VCores)
 
 ## Core Features
-1.  **User Management & Authentication:** Signup, login, JWT-based sessions.
-2.  **Profile System:** Multiple user profiles per account with parental controls.
-3.  **Playlist Management:** Secure storage of Xtream codes.
-4.  **Favorites & State Sync:** Sync favorites and watch progress across devices.
-5.  **Subscription Tiers:** Free and paid plans with feature limits.
-6.  **Reseller System:** Credits-based system for creating client accounts.
-7.  **Watch Party ("CineSync"):** Real-time synchronized playback and chat.
+1. **User Management & Authentication:** Email-based signup/login, JWT sessions with role-based access control.
+2. **Profile System:** Multiple user profiles per account with parental controls (PIN stored as plain text).
+3. **Playlist Management:** Storage of Xtream codes (credentials stored in plain text).
+4. **Favorites & State Sync:** Sync favorites and watch progress across devices.
+5. **Subscription Tiers:** Free and paid plans with feature limits.
+6. **Reseller System:** Credits-based system for creating client accounts.
+7. **Admin Panel:** Complete user and system management.
+8. **Watch Party ("CineSync"):** Real-time synchronized playback and chat (future feature).
+
+## Database Design Updates
+
+### User Authentication & Roles
+- **No Username:** Users authenticate with email only
+- **Role-Based Access:** Single `role` column with values: 'user', 'reseller', 'admin'
+- **Default Admin:** System includes a default admin user (admin@syncstream.tv)
+
+### Key Tables
+1. **users:** Core user data with role-based permissions
+2. **profiles:** Multiple profiles per user with plain-text PINs
+3. **playlists:** IPTV credentials (plain text storage)
+4. **subscriptions:** Stripe subscription tracking
+5. **credits_transactions:** Audit trail for reseller operations
+6. **idempotency_keys:** Prevents duplicate operations (critical for payments)
 
 ## Key Technical Implementation Examples
 
@@ -28,9 +44,6 @@ A global plugin ensures all responses, including errors, follow the `{success, m
 
 **`src/plugins/format.js`**
 ```javascript
-// plugins/format.js
-import Elysia from "elysia";
-
 export const formatPlugin = new Elysia()
   .mapResponse(({ response, set }) => {
     if (response !== undefined && response !== null) {
@@ -46,180 +59,118 @@ export const formatPlugin = new Elysia()
   });
 ```
 
-### 2. JWT with Profile Context & Protected Profile Selection
-The JWT payload includes the active profile ID. A dedicated endpoint handles PIN verification and updates this context.
+### 2. Role-Based Access Control
+Authentication now uses a single role field for permissions.
 
-**JWT Setup & Protected Route Example:**
-**`src/plugins/auth.js`**
+**`src/routes/admin.js`**
 ```javascript
-// plugins/auth.js
-import { jwt } from '@elysiajs/jwt'
-import { cookie } from '@elysiajs/cookie'
-
-export const authPlugin = new Elysia()
-  .use(jwt({
-    name: 'jwt',
-    secret: Bun.env.JWT_SECRET,
-    schema: {
-      userId: String,
-      current_profile_id: { type: String, optional: true } // Critical for scoping
-    }
-  }))
-  .use(cookie())
-  .derive({ as: 'global' }, ({ jwt, cookie: { auth } }) => {
-    return {
-      getUserId: async () => {
-        const payload = await jwt.verify(auth.value);
-        return payload?.userId ?? null;
+export const adminRoutes = new Elysia({ prefix: '/admin' })
+  .guard({
+    beforeHandle: async ({ getUser, set }) => {
+      const user = await getUser();
+      if (!user || user.role !== 'admin') {
+        set.status = 403;
+        throw new Error('Forbidden: Admin access required');
       }
-    };
-  });
-```
-
-**`src/routes/auth.profile.select.js`**
-```javascript
-// routes/auth.profile.select.js
-import Elysia from "elysia";
-import { authPlugin } from '../plugins/auth.js';
-
-export const profileSelectRoute = new Elysia()
-  .use(authPlugin)
-  .post("/profile/:id/select", async ({ jwt, body, params, set, cookie: { auth }, getUserId, db }) => {
-    const userId = await getUserId();
-    if (!userId) throw new Error("Unauthorized");
-
-    // 1. Get profile and verify ownership
-    const profile = await db.profiles.findFirst({
-      where: { id: params.id, user_id: userId },
-      select: { parental_pin_hash: true }
-    });
-    if (!profile) throw new Error("Profile not found");
-
-    // 2. Verify PIN if required
-    if (profile.parental_pin_hash) {
-      if (!body.pin) throw new Error("PIN required");
-      const isValid = await Bun.password.verify(body.pin, profile.parental_pin_hash);
-      if (!isValid) throw new Error("Invalid PIN");
     }
-
-    // 3. Issue new JWT with the selected profile context
-    const newToken = await jwt.sign({
-      userId: userId,
-      current_profile_id: params.id
-    });
-
-    auth.set({ value: newToken, httpOnly: true, secure: true, sameSite: 'lax' });
-    return { message: "Profile selected successfully" };
-  }, {
-    body: {
-      pin: { type: String, optional: true }
-    }
-  });
+  })
 ```
 
-### 3. Concurrency-Safe Reseller Credit Deduction
-Using PostgreSQL transactions and `FOR UPDATE` to prevent race conditions.
+### 3. Email-Only Authentication
+Simplified authentication using only email addresses.
 
-**`src/routes/reseller.clients.create.js`**
+**`src/routes/auth.js`**
 ```javascript
-// routes/reseller.clients.create.js
-import Elysia from "elysia";
-import { authPlugin } from '../plugins/auth.js';
-
-// This cost should be configured in a central config file
-const CLIENT_CREATION_COST = 1000; // Example: 1000 credits
-
-export const resellerCreateClientRoute = new Elysia()
-  .use(authPlugin)
-  .post("/clients", async ({ body, getUserId, db }) => {
-    const resellerId = await getUserId();
-    // ...get reseller from db, check if they are a reseller...
-
-    return await db.$transaction(async (tx) => {
-      // 1. Lock the reseller's row
-      const reseller = await tx.users.findUnique({
-        where: { id: resellerId },
-        select: { credits_balance: true },
-        lock: 'ForUpdate' // This is the key
-      });
-
-      // 2. Check balance
-      if (reseller.credits_balance < CLIENT_CREATION_COST) {
-        throw new Error("Insufficient credits");
-      }
-
-      // 3. Deduct credits & create client
-      await tx.users.update({
-        where: { id: resellerId },
-        data: { credits_balance: { decrement: CLIENT_CREATION_COST } }
-      });
-
-      const newClient = await tx.users.create({
-        data: { ...body, parent_reseller_id: resellerId }
-      });
-
-      // 4. Record transaction
-      await tx.credits_transactions.create({
-        data: {
-          user_id: resellerId,
-          amount: -CLIENT_CREATION_COST,
-          transaction_type: 'client_created',
-          description: `Created client: ${newClient.email}`
-        }
-      });
-
-      return newClient;
-    });
-  });
+.post('/login', async ({ body, db, signToken, cookie: { auth } }) => {
+  const validatedData = loginSchema.parse(body);
+  const { email, password } = validatedData;
+  
+  const user = await db.getOne(
+    'SELECT * FROM users WHERE email = $1',
+    [email]
+  );
+  
+  if (!user) {
+    throw new Error('Invalid email or password');
+  }
+  
+  // Verify password and issue JWT...
+})
 ```
 
-### 4. Real-Time Enforcement of Plan Limits
-Checking limits dynamically on every create request.
+### 4. Idempotency for Critical Operations
+Prevents duplicate operations using idempotency keys.
 
-**`src/routes/profiles.create.js`**
+**Why Idempotency Keys Are Important:**
+- Prevents double-charging on payment retries
+- Ensures exactly-once execution for critical operations
+- Essential for reseller credit operations
+
+**Implementation Pattern:**
 ```javascript
-// routes/profiles.create.js
-import Elysia from "elysia";
-import { authPlugin } from '../plugins/auth.js';
+// Client sends: Idempotency-Key: unique-request-id
+// Server checks if this key was used before
+const existing = await db.getOne(
+  'SELECT response FROM idempotency_keys WHERE key = $1 AND expires_at > NOW()',
+  [idempotencyKey]
+);
 
-// Helper function to get the free plan limits
-function getFreePlan() {
-  return { max_profiles: 1 };
+if (existing) {
+  return existing.response; // Return cached response
 }
 
-export const profilesCreateRoute = new Elysia()
-  .use(authPlugin)
-  .post("/profiles", async ({ body, getUserId, db }) => {
-    const userId = await getUserId();
-
-    return await db.$transaction(async (tx) => {
-      // 1. Get user's current active plan limits
-      const userWithPlan = await tx.users.findUnique({
-        where: { id: userId },
-        include: {
-          subscription: {
-            where: { status: 'active' },
-            include: { plan: true }
-          }
-        }
-      });
-
-      const userPlan = userWithPlan?.subscription?.plan || getFreePlan();
-      const maxProfiles = userPlan.max_profiles;
-
-      // 2. Check current count against the limit
-      const currentProfileCount = await tx.profiles.count({
-        where: { user_id: userId }
-      });
-
-      if (maxProfiles !== -1 && currentProfileCount >= maxProfiles) {
-        throw new Error(`Plan limit reached. Maximum profiles: ${maxProfiles}`);
-      }
-
-      // 3. Create the profile if under the limit
-      return await tx.profiles.create({
-        data: { ...body, user_id: userId }
-      });
-    });
-  });
+// Execute operation and store result...
 ```
+
+### 5. Reseller Credit System with Atomicity
+Complete implementation with transaction safety.
+
+**`src/routes/resellers.js`**
+```javascript
+const result = await db.transaction(async (tx) => {
+  // Lock reseller row
+  const reseller = await tx.query(
+    'SELECT id, credits_balance FROM users WHERE id = $1 FOR UPDATE',
+    [resellerId]
+  );
+  
+  // Check balance
+  if (reseller.rows[0].credits_balance < creditCost) {
+    throw new Error('Insufficient credits');
+  }
+  
+  // Create client, deduct credits, record transaction
+  // All operations succeed or all fail
+});
+```
+
+## API Endpoints Summary
+
+### Authentication
+- `POST /auth/signup` - Create account (email only)
+- `POST /auth/login` - Login with email
+- `GET /auth/me` - Get current user
+
+### User Management
+- Profiles, Playlists, Favorites, Progress tracking
+
+### Subscriptions
+- Plan management, Stripe checkout, Billing portal
+
+### Admin Panel
+- User management, System stats, Role updates
+
+### Reseller Portal
+- Dashboard, Client creation, Credit transactions
+
+## Security Considerations
+1. **Plain Text Storage:** PINs and playlist passwords stored unencrypted (per requirements)
+2. **Role Enforcement:** All protected routes check user role
+3. **Transaction Safety:** Critical operations use database transactions
+4. **Idempotency:** Payment operations protected against duplicates
+
+## Next Development Phase
+1. Email notification system
+2. Watch Party (CineSync) feature
+3. Advanced analytics dashboard
+4. Mobile app API optimization

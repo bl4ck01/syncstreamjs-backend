@@ -4,7 +4,8 @@ Cloud-based IPTV management hub built with Bun and Elysia.js.
 
 ## Features
 
-- ✅ User authentication (signup/login with JWT) - supports email or username
+- ✅ User authentication (email-based only, no username)
+- ✅ Role-based access control (user, reseller, admin)
 - ✅ Multiple profiles per account with parental controls (PIN stored as plain text)
 - ✅ Playlist management (Xtream codes stored in plain text)
 - ✅ Favorites system with plan limits
@@ -13,8 +14,9 @@ Cloud-based IPTV management hub built with Bun and Elysia.js.
 - ✅ Stripe subscription integration
 - ✅ Webhook handlers for payment events
 - ✅ Admin panel for user and plan management
+- ✅ Reseller portal with credit system
+- ✅ Idempotency protection for critical operations
 - ✅ Default admin user included
-- 🚧 Reseller credit system (partial implementation)
 
 ## Tech Stack
 
@@ -65,8 +67,8 @@ The API will be available at `http://localhost:3000`
 - `GET /health/db` - Database connectivity check
 
 ### Authentication
-- `POST /auth/signup` - Create new account
-- `POST /auth/login` - Login with email or username
+- `POST /auth/signup` - Create new account (email only)
+- `POST /auth/login` - Login with email
 - `POST /auth/logout` - Logout
 - `GET /auth/me` - Get current user
 
@@ -116,8 +118,13 @@ The API will be available at `http://localhost:3000`
 - `PATCH /admin/plans/:id` - Update plan
 - `POST /admin/credits/add` - Add credits to user
 - `GET /admin/stats` - Get system statistics
-- `PATCH /admin/users/:id/admin` - Toggle admin status
-- `PATCH /admin/users/:id/reseller` - Toggle reseller status
+- `PATCH /admin/users/:id/role` - Update user role (user/reseller/admin)
+
+### Reseller (Requires reseller role)
+- `GET /reseller/dashboard` - Get reseller dashboard data
+- `GET /reseller/clients` - List reseller's clients
+- `POST /reseller/clients` - Create new client account
+- `GET /reseller/transactions` - Get credit transaction history
 
 ## Security Features
 
@@ -140,8 +147,8 @@ bun run dev
 
 The system includes a default admin user:
 - **Email**: admin@syncstream.tv
-- **Username**: admin
 - **Password**: admin123
+- **Role**: admin
 
 ⚠️ **Important**: Change the admin password immediately after first login!
 
@@ -171,11 +178,12 @@ FRONTEND_URL=http://localhost:3001
 ## Database Schema Updates
 
 The schema now includes:
-- `username` field in users table (unique, required)
-- `is_admin` flag for admin users
+- Email-only authentication (no username field)
+- Role-based access control with `role` column (user/reseller/admin)
 - Plain text storage for playlist passwords
 - Plain text storage for profile PINs
 - Proper CASCADE delete constraints on foreign keys
+- Idempotency keys table for preventing duplicate operations
 
 ## Next Steps
 

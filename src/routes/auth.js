@@ -12,16 +12,16 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     .post('/signup', async ({ body, db, signToken, cookie: { auth } }) => {
         // Validate request body
         const validatedData = signupSchema.parse(body);
-        const { email, password, username, full_name } = validatedData;
+        const { email, password, full_name } = validatedData;
 
         // Check if user exists
         const existingUser = await db.getOne(
-            'SELECT id FROM users WHERE email = $1 OR username = $2',
-            [email, username]
+            'SELECT id FROM users WHERE email = $1',
+            [email]
         );
 
         if (existingUser) {
-            throw new Error('User with this email or username already exists');
+            throw new Error('User with this email already exists');
         }
 
         // Hash password
@@ -31,10 +31,9 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         const user = await db.insert('users', {
             email,
             password_hash: passwordHash,
-            username,
             full_name,
+            role: 'user',
             has_used_trial: false,
-            is_reseller: false,
             credits_balance: 0
         });
 
@@ -60,13 +59,12 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         return {
             id: user.id,
             email: user.email,
-            username: user.username
+            role: user.role
         };
     }, {
         body: t.Object({
             email: t.String({ format: 'email' }),
             password: t.String({ minLength: 8 }),
-            username: t.String({ minLength: 3, maxLength: 50 }),
             full_name: t.Optional(t.String())
         }),
         transform({ body }) {
@@ -77,17 +75,14 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 
     // Login
     .post('/login', async ({ body, db, signToken, cookie: { auth } }) => {
-        // Support login with email or username
-        const { email, username, password } = body;
-        const loginField = email || username;
-        const isEmail = loginField.includes('@');
+        // Validate request body
+        const validatedData = loginSchema.parse(body);
+        const { email, password } = validatedData;
 
-        // Get user by email or username
+        // Get user by email
         const user = await db.getOne(
-            isEmail
-                ? 'SELECT * FROM users WHERE email = $1'
-                : 'SELECT * FROM users WHERE username = $1',
-            [loginField]
+            'SELECT * FROM users WHERE email = $1',
+            [email]
         );
 
         if (!user) {
@@ -116,21 +111,13 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         return {
             id: user.id,
             email: user.email,
-            username: user.username
+            role: user.role
         };
     }, {
-        body: t.Union([
-            t.Object({
-                email: t.String({ format: 'email' }),
-                password: t.String(),
-                username: t.Optional(t.String())
-            }),
-            t.Object({
-                username: t.String(),
-                password: t.String(),
-                email: t.Optional(t.String())
-            })
-        ]),
+        body: t.Object({
+            email: t.String({ format: 'email' }),
+            password: t.String()
+        }),
         transform({ body }) {
             // Additional validation with Zod
             return loginSchema.parse(body);
