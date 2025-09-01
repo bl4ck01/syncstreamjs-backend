@@ -1,0 +1,1156 @@
+{
+  "info": {
+    "name": "SyncStream TV API",
+    "description": "Complete API collection for SyncStream TV - Cloud-based IPTV management hub",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "resellerToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "profileId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "playlistId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "clientId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "Database Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/db",
+              "host": ["{{baseUrl}}"],
+              "path": ["health", "db"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Signup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has success true\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.test(\"User ID is returned\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('id');",
+                  "    pm.collectionVariables.set(\"userId\", jsonData.data.id);",
+                  "});",
+                  "",
+                  "// Extract auth token from cookie",
+                  "const cookie = pm.response.headers.get('Set-Cookie');",
+                  "if (cookie) {",
+                  "    const authMatch = cookie.match(/auth=([^;]+)/);",
+                  "    if (authMatch) {",
+                  "        pm.collectionVariables.set(\"authToken\", authMatch[1]);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"test{{$timestamp}}@example.com\",\n    \"password\": \"password123\",\n    \"full_name\": \"Test User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/signup",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "signup"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has success true\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "});",
+                  "",
+                  "// Extract auth token from cookie",
+                  "const cookie = pm.response.headers.get('Set-Cookie');",
+                  "if (cookie) {",
+                  "    const authMatch = cookie.match(/auth=([^;]+)/);",
+                  "    if (authMatch) {",
+                  "        pm.collectionVariables.set(\"authToken\", authMatch[1]);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Admin Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Extract auth token from cookie",
+                  "const cookie = pm.response.headers.get('Set-Cookie');",
+                  "if (cookie) {",
+                  "    const authMatch = cookie.match(/auth=([^;]+)/);",
+                  "    if (authMatch) {",
+                  "        pm.collectionVariables.set(\"adminToken\", authMatch[1]);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"admin@syncstream.tv\",\n    \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Profiles",
+      "item": [
+        {
+          "name": "Get All Profiles",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/profiles",
+              "host": ["{{baseUrl}}"],
+              "path": ["profiles"]
+            }
+          }
+        },
+        {
+          "name": "Create Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Profile ID is returned\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('id');",
+                  "    pm.collectionVariables.set(\"profileId\", jsonData.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Kids Profile\",\n    \"is_kids_profile\": true,\n    \"parental_pin\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/profiles",
+              "host": ["{{baseUrl}}"],
+              "path": ["profiles"]
+            }
+          }
+        },
+        {
+          "name": "Select Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Update auth token with new profile context",
+                  "const cookie = pm.response.headers.get('Set-Cookie');",
+                  "if (cookie) {",
+                  "    const authMatch = cookie.match(/auth=([^;]+)/);",
+                  "    if (authMatch) {",
+                  "        pm.collectionVariables.set(\"authToken\", authMatch[1]);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"pin\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/profiles/{{profileId}}/select",
+              "host": ["{{baseUrl}}"],
+              "path": ["profiles", "{{profileId}}", "select"]
+            }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Updated Profile Name\",\n    \"parental_pin\": \"5678\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/profiles/{{profileId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["profiles", "{{profileId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Profile",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/profiles/{{profileId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["profiles", "{{profileId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Playlists",
+      "item": [
+        {
+          "name": "Get All Playlists",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/playlists",
+              "host": ["{{baseUrl}}"],
+              "path": ["playlists"]
+            }
+          }
+        },
+        {
+          "name": "Create Playlist",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Playlist ID is returned\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('id');",
+                  "    pm.collectionVariables.set(\"playlistId\", jsonData.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"My IPTV Playlist\",\n    \"url\": \"http://iptv.example.com/playlist.m3u\",\n    \"username\": \"iptv_user\",\n    \"password\": \"iptv_password\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/playlists",
+              "host": ["{{baseUrl}}"],
+              "path": ["playlists"]
+            }
+          }
+        },
+        {
+          "name": "Get Playlist Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/playlists/{{playlistId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["playlists", "{{playlistId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Playlist",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Updated Playlist Name\",\n    \"is_active\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/playlists/{{playlistId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["playlists", "{{playlistId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Playlist",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/playlists/{{playlistId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["playlists", "{{playlistId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Favorites",
+      "item": [
+        {
+          "name": "Get Favorites",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/favorites",
+              "host": ["{{baseUrl}}"],
+              "path": ["favorites"]
+            }
+          }
+        },
+        {
+          "name": "Add Favorite",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"item_id\": \"channel_123\",\n    \"item_type\": \"channel\",\n    \"item_name\": \"Sports Channel\",\n    \"item_logo\": \"http://example.com/logo.png\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/favorites",
+              "host": ["{{baseUrl}}"],
+              "path": ["favorites"]
+            }
+          }
+        },
+        {
+          "name": "Check Favorite",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/favorites/check/channel_123",
+              "host": ["{{baseUrl}}"],
+              "path": ["favorites", "check", "channel_123"]
+            }
+          }
+        },
+        {
+          "name": "Remove Favorite",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/favorites/channel_123",
+              "host": ["{{baseUrl}}"],
+              "path": ["favorites", "channel_123"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Watch Progress",
+      "item": [
+        {
+          "name": "Get Progress",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/progress",
+              "host": ["{{baseUrl}}"],
+              "path": ["progress"]
+            }
+          }
+        },
+        {
+          "name": "Update Progress",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"item_id\": \"movie_456\",\n    \"item_type\": \"movie\",\n    \"progress_seconds\": 1800,\n    \"duration_seconds\": 7200,\n    \"completed\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/progress",
+              "host": ["{{baseUrl}}"],
+              "path": ["progress"]
+            }
+          }
+        },
+        {
+          "name": "Get Item Progress",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/progress/movie_456",
+              "host": ["{{baseUrl}}"],
+              "path": ["progress", "movie_456"]
+            }
+          }
+        },
+        {
+          "name": "Delete Progress",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/progress/movie_456",
+              "host": ["{{baseUrl}}"],
+              "path": ["progress", "movie_456"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subscriptions",
+      "item": [
+        {
+          "name": "Get Current Subscription",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/current",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "current"]
+            }
+          }
+        },
+        {
+          "name": "Get Available Plans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "plans"]
+            }
+          }
+        },
+        {
+          "name": "Create Checkout Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"price_id\": \"price_basic_monthly\",\n    \"success_url\": \"http://localhost:3001/success\",\n    \"cancel_url\": \"http://localhost:3001/cancel\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/checkout",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "checkout"]
+            }
+          }
+        },
+        {
+          "name": "Change Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"new_price_id\": \"price_premium_monthly\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/change-plan",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "change-plan"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "cancel"]
+            }
+          }
+        },
+        {
+          "name": "Reactivate Subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/reactivate",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "reactivate"]
+            }
+          }
+        },
+        {
+          "name": "Get Billing Portal",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/billing-portal",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "billing-portal"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "users", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update User Role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"role\": \"reseller\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{userId}}/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "users", "{{userId}}", "role"]
+            }
+          }
+        },
+        {
+          "name": "Get System Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "stats"]
+            }
+          }
+        },
+        {
+          "name": "Get All Plans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "plans"]
+            }
+          }
+        },
+        {
+          "name": "Create Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Enterprise\",\n    \"stripe_price_id\": \"price_enterprise_monthly\",\n    \"price_monthly\": 29.99,\n    \"max_profiles\": 20,\n    \"max_playlists\": 50,\n    \"max_favorites\": -1,\n    \"features\": {\"ads\": false, \"hd\": true, \"4k\": true, \"priority_support\": true}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "plans"]
+            }
+          }
+        },
+        {
+          "name": "Add Credits to User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"user_id\": \"{{userId}}\",\n    \"amount\": 5000,\n    \"description\": \"Monthly credit allocation\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/credits/add",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "credits", "add"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reseller",
+      "item": [
+        {
+          "name": "Get Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{resellerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reseller/dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["reseller", "dashboard"]
+            }
+          }
+        },
+        {
+          "name": "Get Clients",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{resellerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reseller/clients?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["reseller", "clients"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Client",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Client ID is returned\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.client).to.have.property('id');",
+                  "    pm.collectionVariables.set(\"clientId\", jsonData.data.client.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{resellerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "description": "Prevents duplicate client creation"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"client{{$timestamp}}@example.com\",\n    \"password\": \"client123\",\n    \"full_name\": \"Client User\",\n    \"plan_stripe_price_id\": \"price_basic_monthly\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/reseller/clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["reseller", "clients"]
+            }
+          }
+        },
+        {
+          "name": "Get Transactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{resellerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reseller/transactions?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["reseller", "transactions"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Stripe Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "stripe-signature",
+                "value": "t=1234567890,v1=signature_here",
+                "description": "Stripe webhook signature"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"id\": \"evt_test_webhook\",\n    \"type\": \"customer.subscription.updated\",\n    \"data\": {\n        \"object\": {\n            \"id\": \"sub_test_123\",\n            \"status\": \"active\"\n        }\n    }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/stripe",
+              "host": ["{{baseUrl}}"],
+              "path": ["webhooks", "stripe"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

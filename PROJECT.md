@@ -169,8 +169,133 @@ const result = await db.transaction(async (tx) => {
 3. **Transaction Safety:** Critical operations use database transactions
 4. **Idempotency:** Payment operations protected against duplicates
 
+## Project Structure
+
+### Directory Layout
+```
+/workspace/
+├── src/
+│   ├── index.js              # Main application entry point
+│   ├── db/
+│   │   ├── connection.js     # PostgreSQL connection pool
+│   │   ├── schema.sql        # Database schema definition
+│   │   └── migrate.js        # Migration runner script
+│   ├── plugins/
+│   │   ├── auth.js          # JWT authentication & cookie management
+│   │   ├── database.js      # Database query helpers & transactions
+│   │   └── format.js        # Standardized response formatting
+│   ├── routes/
+│   │   ├── auth.js          # Authentication endpoints
+│   │   ├── profiles.js      # Profile management
+│   │   ├── playlists.js     # Playlist CRUD operations
+│   │   ├── favorites.js     # Favorites management
+│   │   ├── progress.js      # Watch progress tracking
+│   │   ├── subscriptions.js # Stripe subscription handling
+│   │   ├── webhooks.js      # Stripe webhook processing
+│   │   ├── admin.js         # Admin panel endpoints
+│   │   ├── resellers.js     # Reseller portal
+│   │   └── health.js        # Health check endpoints
+│   └── utils/
+│       ├── password.js      # Bcrypt password hashing
+│       └── validation.js    # Zod validation schemas
+├── postman/
+│   └── syncstream.collection.json  # Complete API collection
+├── .env                     # Environment variables
+├── .gitignore              # Git ignore rules
+├── package.json            # Project dependencies
+├── README.md               # Quick start guide
+├── PROJECT.md              # This file - detailed documentation
+├── RULES.md                # Business logic rules
+└── SCENARIOS.md            # User scenarios & workflows
+```
+
+### Architecture Patterns
+
+#### 1. Plugin-Based Architecture
+Elysia.js plugins provide modular, reusable functionality:
+- **Global Plugins:** Applied to all routes (auth, database, format)
+- **Route Guards:** Protect endpoints based on roles
+- **Derive Functions:** Add computed properties to context
+
+#### 2. Database Access Pattern
+- **Connection Pool:** Shared PostgreSQL connection pool
+- **Query Helpers:** Simplified database operations
+- **Transaction Support:** Atomic operations for critical flows
+- **Row Locking:** Prevents race conditions (FOR UPDATE)
+
+#### 3. Authentication Flow
+```
+1. User Login → Validate credentials
+2. Generate JWT → Include userId & email
+3. Set httpOnly Cookie → Secure token storage
+4. Profile Selection → Update JWT with profile context
+5. Request Authorization → Verify JWT & check role
+```
+
+#### 4. Error Handling Strategy
+- All errors caught by global error handler
+- Standardized error responses
+- Appropriate HTTP status codes
+- User-friendly error messages
+
+### Development Workflow
+
+#### Local Development
+```bash
+# Install dependencies
+bun install
+
+# Set up environment
+cp .env.example .env
+# Edit .env with your credentials
+
+# Run migrations
+bun run db:migrate
+
+# Start dev server with hot reload
+bun run dev
+```
+
+#### Testing Strategy
+1. **Unit Tests:** Test individual functions and utilities
+2. **Integration Tests:** Test API endpoints with database
+3. **E2E Tests:** Test complete user flows
+4. **Postman Collection:** Manual and automated API testing
+
+#### Deployment Checklist
+- [ ] Environment variables configured
+- [ ] PostgreSQL database provisioned
+- [ ] Stripe webhooks configured
+- [ ] SSL certificates installed
+- [ ] Monitoring & logging set up
+- [ ] Backup strategy implemented
+
+## Performance Optimizations
+
+### Database Optimizations
+- Indexed columns for fast lookups
+- Connection pooling for efficiency
+- Prepared statements for security
+- Transaction batching where applicable
+
+### API Optimizations
+- JWT caching in cookies
+- Minimal database queries
+- Efficient data serialization
+- Response compression
+
+### Scalability Considerations
+- Horizontal scaling ready
+- Stateless architecture
+- Database connection limits
+- Rate limiting implementation
+
 ## Next Development Phase
-1. Email notification system
-2. Watch Party (CineSync) feature
+1. Email notification system (SendGrid/AWS SES)
+2. Watch Party (CineSync) - WebSocket implementation
 3. Advanced analytics dashboard
 4. Mobile app API optimization
+5. CDN integration for static assets
+6. Multi-language support
+7. Advanced search capabilities
+8. Recommendation engine
