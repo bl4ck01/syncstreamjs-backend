@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { encrypt, decrypt } from '../utils/encryption.js';
+import { createPlaylistSchema, updatePlaylistSchema } from '../utils/validation.js';
 
 export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     .use(authPlugin)
@@ -25,7 +25,10 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     // Create new playlist
     .post('/', async ({ body, getUserId, db }) => {
         const userId = await getUserId();
-        const { name, url, username, password } = body;
+
+        // Validate request body
+        const validatedData = createPlaylistSchema.parse(body);
+        const { name, url, username, password } = validatedData;
 
         // Get user's plan limits
         const userPlan = await db.getOne(`
@@ -49,16 +52,13 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
             throw new Error(`Plan limit reached. Maximum playlists: ${maxPlaylists}`);
         }
 
-        // Encrypt password
-        const encryptedPassword = encrypt(password);
-
-        // Create playlist
+        // Create playlist (password stored as plain text)
         const playlist = await db.insert('playlists', {
             user_id: userId,
             name,
             url,
             username,
-            password: encryptedPassword,
+            password,
             is_active: true
         });
 
@@ -72,10 +72,13 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
             url: t.String({ format: 'url' }),
             username: t.String({ minLength: 1 }),
             password: t.String({ minLength: 1 })
-        })
+        }),
+        transform({ body }) {
+            return createPlaylistSchema.parse(body);
+        }
     })
 
-    // Get playlist details (with decrypted credentials)
+    // Get playlist details
     .get('/:id', async ({ params, getUserId, db }) => {
         const userId = await getUserId();
         const playlistId = params.id;
@@ -89,9 +92,7 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
             throw new Error('Playlist not found');
         }
 
-        // Decrypt password for user
-        playlist.password = decrypt(playlist.password);
-
+        // Password is already in plain text
         return playlist;
     }, {
         params: t.Object({
@@ -103,6 +104,9 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     .patch('/:id', async ({ params, body, getUserId, db }) => {
         const userId = await getUserId();
         const playlistId = params.id;
+
+        // Validate request body
+        const validatedData = updatePlaylistSchema.parse(body);
 
         // Verify ownership
         const exists = await db.getOne(
@@ -116,15 +120,11 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
 
         // Prepare update data
         const updateData = {};
-        if (body.name !== undefined) updateData.name = body.name;
-        if (body.url !== undefined) updateData.url = body.url;
-        if (body.username !== undefined) updateData.username = body.username;
-        if (body.is_active !== undefined) updateData.is_active = body.is_active;
-
-        // Encrypt password if provided
-        if (body.password !== undefined) {
-            updateData.password = encrypt(body.password);
-        }
+        if (validatedData.name !== undefined) updateData.name = validatedData.name;
+        if (validatedData.url !== undefined) updateData.url = validatedData.url;
+        if (validatedData.username !== undefined) updateData.username = validatedData.username;
+        if (validatedData.is_active !== undefined) updateData.is_active = validatedData.is_active;
+        if (validatedData.password !== undefined) updateData.password = validatedData.password;
 
         const playlist = await db.update('playlists', playlistId, updateData);
 
@@ -142,7 +142,10 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
             username: t.Optional(t.String({ minLength: 1 })),
             password: t.Optional(t.String({ minLength: 1 })),
             is_active: t.Optional(t.Boolean())
-        })
+        }),
+        transform({ body }) {
+            return updatePlaylistSchema.parse(body);
+        }
     })
 
     // Delete playlist

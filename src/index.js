@@ -17,6 +17,9 @@ import { profileRoutes } from './routes/profiles.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { favoritesRoutes } from './routes/favorites.js';
 import { progressRoutes } from './routes/progress.js';
+import { subscriptionRoutes } from './routes/subscriptions.js';
+import { webhookRoutes } from './routes/webhooks.js';
+import { adminRoutes } from './routes/admin.js';
 
 const app = new Elysia()
   // Global plugins
@@ -35,6 +38,9 @@ const app = new Elysia()
   .use(playlistRoutes)
   .use(favoritesRoutes)
   .use(progressRoutes)
+  .use(subscriptionRoutes)
+  .use(webhookRoutes)
+  .use(adminRoutes)
 
   // Root endpoint
   .get('/', () => ({

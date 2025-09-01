@@ -1,0 +1,298 @@
+import { Elysia, t } from 'elysia';
+import { authPlugin } from '../plugins/auth.js';
+import { databasePlugin } from '../plugins/database.js';
+import { createCheckoutSchema, changePlanSchema } from '../utils/validation.js';
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
+    .use(authPlugin)
+    .use(databasePlugin)
+    .guard({
+        beforeHandle: ({ requireAuth }) => requireAuth()
+    })
+
+    // Get current subscription
+    .get('/current', async ({ getUserId, db }) => {
+        const userId = await getUserId();
+
+        const subscription = await db.getOne(`
+            SELECT 
+                s.*,
+                p.name as plan_name,
+                p.price_monthly,
+                p.max_profiles,
+                p.max_playlists,
+                p.max_favorites,
+                p.features
+            FROM subscriptions s
+            JOIN plans p ON s.plan_id = p.id
+            WHERE s.user_id = $1 AND s.status = 'active'
+            ORDER BY s.created_at DESC
+            LIMIT 1
+        `, [userId]);
+
+        return subscription;
+    })
+
+    // Get available plans
+    .get('/plans', async ({ db }) => {
+        const plans = await db.getMany(
+            'SELECT * FROM plans WHERE is_active = TRUE ORDER BY price_monthly',
+            []
+        );
+
+        return plans;
+    })
+
+    // Create checkout session for new subscription or upgrade
+    .post('/checkout', async ({ body, getUserId, getUser, db }) => {
+        const userId = await getUserId();
+        const user = await getUser();
+
+        // Validate request
+        const { price_id, success_url, cancel_url } = createCheckoutSchema.parse(body);
+
+        // Get the plan for the price_id
+        const plan = await db.getOne(
+            'SELECT * FROM plans WHERE stripe_price_id = $1 AND is_active = TRUE',
+            [price_id]
+        );
+
+        if (!plan) {
+            throw new Error('Invalid plan selected');
+        }
+
+        // Check if user already has an active subscription
+        const existingSubscription = await db.getOne(
+            'SELECT * FROM subscriptions WHERE user_id = $1 AND status = \'active\'',
+            [userId]
+        );
+
+        if (existingSubscription) {
+            throw new Error('You already have an active subscription. Please use the change plan endpoint.');
+        }
+
+        // Create or get Stripe customer
+        let stripeCustomerId = user.stripe_customer_id;
+
+        if (!stripeCustomerId) {
+            const customer = await stripe.customers.create({
+                email: user.email,
+                metadata: {
+                    user_id: userId
+                }
+            });
+
+            stripeCustomerId = customer.id;
+
+            // Update user with Stripe customer ID
+            await db.query(
+                'UPDATE users SET stripe_customer_id = $1 WHERE id = $2',
+                [stripeCustomerId, userId]
+            );
+        }
+
+        // Determine if user is eligible for trial
+        const trialEligible = !user.has_used_trial;
+
+        // Create Stripe checkout session
+        const session = await stripe.checkout.sessions.create({
+            customer: stripeCustomerId,
+            line_items: [
+                {
+                    price: price_id,
+                    quantity: 1
+                }
+            ],
+            mode: 'subscription',
+            success_url,
+            cancel_url,
+            subscription_data: trialEligible ? {
+                trial_period_days: 7,
+                metadata: {
+                    user_id: userId,
+                    plan_id: plan.id
+                }
+            } : {
+                metadata: {
+                    user_id: userId,
+                    plan_id: plan.id
+                }
+            },
+            metadata: {
+                user_id: userId,
+                plan_id: plan.id
+            }
+        });
+
+        return {
+            checkout_url: session.url,
+            session_id: session.id
+        };
+    }, {
+        body: t.Object({
+            price_id: t.String(),
+            success_url: t.String({ format: 'url' }),
+            cancel_url: t.String({ format: 'url' })
+        }),
+        transform({ body }) {
+            return createCheckoutSchema.parse(body);
+        }
+    })
+
+    // Change subscription plan
+    .post('/change-plan', async ({ body, getUserId, getUser, db }) => {
+        const userId = await getUserId();
+        const user = await getUser();
+
+        // Validate request
+        const { new_price_id } = changePlanSchema.parse(body);
+
+        // Get current subscription
+        const currentSubscription = await db.getOne(
+            'SELECT * FROM subscriptions WHERE user_id = $1 AND status = \'active\'',
+            [userId]
+        );
+
+        if (!currentSubscription || !currentSubscription.stripe_subscription_id) {
+            throw new Error('No active subscription found');
+        }
+
+        // Get the new plan
+        const newPlan = await db.getOne(
+            'SELECT * FROM plans WHERE stripe_price_id = $1 AND is_active = TRUE',
+            [new_price_id]
+        );
+
+        if (!newPlan) {
+            throw new Error('Invalid plan selected');
+        }
+
+        // Get the Stripe subscription
+        const stripeSubscription = await stripe.subscriptions.retrieve(
+            currentSubscription.stripe_subscription_id
+        );
+
+        // Update the subscription in Stripe
+        const updatedSubscription = await stripe.subscriptions.update(
+            currentSubscription.stripe_subscription_id,
+            {
+                items: [{
+                    id: stripeSubscription.items.data[0].id,
+                    price: new_price_id
+                }],
+                proration_behavior: 'create_prorations',
+                metadata: {
+                    user_id: userId,
+                    plan_id: newPlan.id
+                }
+            }
+        );
+
+        // Note: The actual database update will happen via webhook
+
+        return {
+            message: 'Plan change initiated',
+            new_plan: newPlan.name,
+            effective_date: new Date(updatedSubscription.current_period_end * 1000).toISOString()
+        };
+    }, {
+        body: t.Object({
+            new_price_id: t.String()
+        }),
+        transform({ body }) {
+            return changePlanSchema.parse(body);
+        }
+    })
+
+    // Cancel subscription
+    .post('/cancel', async ({ getUserId, db }) => {
+        const userId = await getUserId();
+
+        // Get current subscription
+        const subscription = await db.getOne(
+            'SELECT * FROM subscriptions WHERE user_id = $1 AND status = \'active\'',
+            [userId]
+        );
+
+        if (!subscription || !subscription.stripe_subscription_id) {
+            throw new Error('No active subscription found');
+        }
+
+        // Cancel at period end in Stripe
+        const canceledSubscription = await stripe.subscriptions.update(
+            subscription.stripe_subscription_id,
+            {
+                cancel_at_period_end: true
+            }
+        );
+
+        // Update local database
+        await db.query(
+            'UPDATE subscriptions SET cancel_at_period_end = TRUE WHERE id = $1',
+            [subscription.id]
+        );
+
+        return {
+            message: 'Subscription will be canceled at the end of the current period',
+            cancel_date: new Date(canceledSubscription.current_period_end * 1000).toISOString()
+        };
+    })
+
+    // Reactivate canceled subscription
+    .post('/reactivate', async ({ getUserId, db }) => {
+        const userId = await getUserId();
+
+        // Get current subscription
+        const subscription = await db.getOne(
+            'SELECT * FROM subscriptions WHERE user_id = $1 AND status = \'active\' AND cancel_at_period_end = TRUE',
+            [userId]
+        );
+
+        if (!subscription || !subscription.stripe_subscription_id) {
+            throw new Error('No canceled subscription found');
+        }
+
+        // Reactivate in Stripe
+        const reactivatedSubscription = await stripe.subscriptions.update(
+            subscription.stripe_subscription_id,
+            {
+                cancel_at_period_end: false
+            }
+        );
+
+        // Update local database
+        await db.query(
+            'UPDATE subscriptions SET cancel_at_period_end = FALSE WHERE id = $1',
+            [subscription.id]
+        );
+
+        return {
+            message: 'Subscription reactivated successfully'
+        };
+    })
+
+    // Get billing portal URL
+    .get('/billing-portal', async ({ getUser, query }) => {
+        const user = await getUser();
+        const { return_url } = query;
+
+        if (!user.stripe_customer_id) {
+            throw new Error('No billing information found');
+        }
+
+        const session = await stripe.billingPortal.sessions.create({
+            customer: user.stripe_customer_id,
+            return_url: return_url || `${process.env.FRONTEND_URL}/account`
+        });
+
+        return {
+            portal_url: session.url
+        };
+    }, {
+        query: t.Object({
+            return_url: t.Optional(t.String({ format: 'url' }))
+        })
+    });

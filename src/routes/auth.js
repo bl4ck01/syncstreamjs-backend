@@ -10,7 +10,9 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 
     // Signup
     .post('/signup', async ({ body, db, signToken, cookie: { auth } }) => {
-        const { email, password, username, full_name } = body;
+        // Validate request body
+        const validatedData = signupSchema.parse(body);
+        const { email, password, username, full_name } = validatedData;
 
         // Check if user exists
         const existingUser = await db.getOne(
@@ -66,17 +68,26 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             password: t.String({ minLength: 8 }),
             username: t.String({ minLength: 3, maxLength: 50 }),
             full_name: t.Optional(t.String())
-        })
+        }),
+        transform({ body }) {
+            // Additional validation with Zod
+            return signupSchema.parse(body);
+        }
     })
 
     // Login
     .post('/login', async ({ body, db, signToken, cookie: { auth } }) => {
-        const { email, password } = body;
+        // Support login with email or username
+        const { email, username, password } = body;
+        const loginField = email || username;
+        const isEmail = loginField.includes('@');
 
-        // Get user
+        // Get user by email or username
         const user = await db.getOne(
-            'SELECT * FROM users WHERE email = $1',
-            [email]
+            isEmail
+                ? 'SELECT * FROM users WHERE email = $1'
+                : 'SELECT * FROM users WHERE username = $1',
+            [loginField]
         );
 
         if (!user) {
@@ -108,10 +119,22 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             username: user.username
         };
     }, {
-        body: t.Object({
-            email: t.String({ format: 'email' }),
-            password: t.String()
-        })
+        body: t.Union([
+            t.Object({
+                email: t.String({ format: 'email' }),
+                password: t.String(),
+                username: t.Optional(t.String())
+            }),
+            t.Object({
+                username: t.String(),
+                password: t.String(),
+                email: t.Optional(t.String())
+            })
+        ]),
+        transform({ body }) {
+            // Additional validation with Zod
+            return loginSchema.parse(body);
+        }
     })
 
     // Logout

@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { hashPin, verifyPin } from '../utils/password.js';
+import { createProfileSchema, selectProfileSchema } from '../utils/validation.js';
 
 export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .use(authPlugin)
@@ -25,7 +25,10 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     // Create new profile
     .post('/', async ({ body, getUserId, db }) => {
         const userId = await getUserId();
-        const { name, avatar_url, parental_pin, is_kids_profile } = body;
+        
+        // Validate request body
+        const validatedData = createProfileSchema.parse(body);
+        const { name, avatar_url, parental_pin, is_kids_profile } = validatedData;
 
         // Get user's plan limits
         const userPlan = await db.getOne(`
@@ -49,23 +52,17 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             throw new Error(`Plan limit reached. Maximum profiles: ${maxProfiles}`);
         }
 
-        // Hash PIN if provided
-        let pinHash = null;
-        if (parental_pin) {
-            pinHash = await hashPin(parental_pin);
-        }
-
-        // Create profile
+        // Create profile (PIN stored as plain text)
         const profile = await db.insert('profiles', {
             user_id: userId,
             name,
             avatar_url,
-            parental_pin_hash: pinHash,
+            parental_pin: parental_pin || null,
             is_kids_profile: is_kids_profile || false
         });
 
         // Remove sensitive data
-        delete profile.parental_pin_hash;
+        delete profile.parental_pin;
 
         return profile;
     }, {
@@ -74,7 +71,10 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             avatar_url: t.Optional(t.String({ format: 'url' })),
             parental_pin: t.Optional(t.String({ pattern: '^\\d{4}$' })),
             is_kids_profile: t.Optional(t.Boolean())
-        })
+        }),
+        transform({ body }) {
+            return createProfileSchema.parse(body);
+        }
     })
 
     // Select profile (sets current profile in JWT)
@@ -92,14 +92,13 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             throw new Error('Profile not found');
         }
 
-        // Verify PIN if required
-        if (profile.parental_pin_hash) {
+        // Verify PIN if required (plain text comparison)
+        if (profile.parental_pin) {
             if (!body.pin) {
                 throw new Error('PIN required');
             }
 
-            const validPin = await verifyPin(body.pin, profile.parental_pin_hash);
-            if (!validPin) {
+            if (body.pin !== profile.parental_pin) {
                 throw new Error('Invalid PIN');
             }
         }
@@ -153,15 +152,15 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         if (body.avatar_url !== undefined) updateData.avatar_url = body.avatar_url;
         if (body.is_kids_profile !== undefined) updateData.is_kids_profile = body.is_kids_profile;
 
-        // Handle PIN update
+        // Handle PIN update (plain text)
         if (body.parental_pin !== undefined) {
-            updateData.parental_pin_hash = body.parental_pin ? await hashPin(body.parental_pin) : null;
+            updateData.parental_pin = body.parental_pin || null;
         }
 
         const profile = await db.update('profiles', profileId, updateData);
 
         // Remove sensitive data
-        delete profile.parental_pin_hash;
+        delete profile.parental_pin;
 
         return profile;
     }, {

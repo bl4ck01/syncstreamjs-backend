@@ -5,12 +5,14 @@
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(255),
     has_used_trial BOOLEAN DEFAULT FALSE,
     is_reseller BOOLEAN DEFAULT FALSE,
+    is_admin BOOLEAN DEFAULT FALSE,
     credits_balance INTEGER DEFAULT 0,
-    parent_reseller_id UUID REFERENCES users(id),
+    parent_reseller_id UUID REFERENCES users(id) ON DELETE SET NULL,
     stripe_customer_id VARCHAR(255) UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -33,7 +35,7 @@ CREATE TABLE IF NOT EXISTS plans (
 -- Subscriptions table
 CREATE TABLE IF NOT EXISTS subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     stripe_subscription_id VARCHAR(255) UNIQUE,
     stripe_price_id VARCHAR(255),
     status VARCHAR(50) NOT NULL,
@@ -41,7 +43,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     current_period_end TIMESTAMP,
     cancel_at_period_end BOOLEAN DEFAULT FALSE,
     trial_end TIMESTAMP,
-    plan_id UUID REFERENCES plans(id),
+    plan_id UUID REFERENCES plans(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -49,10 +51,10 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 -- Profiles table
 CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     avatar_url VARCHAR(500),
-    parental_pin_hash VARCHAR(255),
+    parental_pin VARCHAR(4),
     is_kids_profile BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -61,11 +63,11 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- Playlists table
 CREATE TABLE IF NOT EXISTS playlists (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     url VARCHAR(500) NOT NULL,
     username VARCHAR(255) NOT NULL,
-    password TEXT NOT NULL, -- Will be encrypted
+    password TEXT NOT NULL, -- Plain text
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -74,7 +76,7 @@ CREATE TABLE IF NOT EXISTS playlists (
 -- Favorites table
 CREATE TABLE IF NOT EXISTS favorites (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    profile_id UUID NOT NULL REFERENCES profiles(id),
+    profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     item_id VARCHAR(255) NOT NULL,
     item_type VARCHAR(50) NOT NULL, -- 'channel', 'movie', 'series'
     item_name VARCHAR(255),
@@ -87,7 +89,7 @@ CREATE TABLE IF NOT EXISTS favorites (
 -- Watch Progress table
 CREATE TABLE IF NOT EXISTS watch_progress (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    profile_id UUID NOT NULL REFERENCES profiles(id),
+    profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     item_id VARCHAR(255) NOT NULL,
     item_type VARCHAR(50) NOT NULL,
     progress_seconds INTEGER DEFAULT 0,
@@ -103,7 +105,7 @@ CREATE TABLE IF NOT EXISTS watch_progress (
 -- Credits Transactions table
 CREATE TABLE IF NOT EXISTS credits_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     amount INTEGER NOT NULL,
     balance_after INTEGER NOT NULL,
     transaction_type VARCHAR(50) NOT NULL, -- 'purchase', 'client_created', 'admin_add'
@@ -117,7 +119,7 @@ CREATE TABLE IF NOT EXISTS credits_transactions (
 CREATE TABLE IF NOT EXISTS idempotency_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     key VARCHAR(255) UNIQUE NOT NULL,
-    user_id UUID REFERENCES users(id),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     request_path VARCHAR(500),
     response JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -126,6 +128,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 
 -- Indexes
 CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
 CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX idx_subscriptions_status ON subscriptions(status);
@@ -144,3 +147,15 @@ VALUES
     ('Premium', 'price_premium_monthly', 9.99, 5, 10, -1, '{"ads": false, "hd": true}'),
     ('Family', 'price_family_monthly', 14.99, 8, 20, -1, '{"ads": false, "hd": true, "4k": true}')
 ON CONFLICT (stripe_price_id) DO NOTHING;
+
+-- Insert default admin user
+-- Password: admin123 (hashed)
+INSERT INTO users (email, username, password_hash, full_name, is_admin)
+VALUES (
+    'admin@syncstream.tv',
+    'admin',
+    '$2b$12$hSChE5UEwkyj.QyedkKSKODvHLK5cfiCPKXX24C4VbdHswvKiBLxK',
+    'System Administrator',
+    TRUE
+)
+ON CONFLICT (email) DO NOTHING;

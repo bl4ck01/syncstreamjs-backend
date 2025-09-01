@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
+import { updateProgressSchema } from '../utils/validation.js';
 
 export const progressRoutes = new Elysia({ prefix: '/progress' })
     .use(authPlugin)
@@ -51,6 +52,9 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
         const profileId = await getCurrentProfileId();
         const userId = await getUserId();
 
+        // Validate request body
+        const validatedData = updateProgressSchema.parse(body);
+
         if (!profileId) {
             throw new Error('No profile selected. Please select a profile first.');
         }
@@ -65,7 +69,7 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
             throw new Error('Invalid profile');
         }
 
-        const { item_id, item_type, progress_seconds, duration_seconds, completed, metadata } = body;
+        const { item_id, item_type, progress_seconds, duration_seconds, completed, metadata } = validatedData;
 
         // Check if progress exists
         const existing = await db.getOne(
@@ -112,7 +116,10 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
             duration_seconds: t.Optional(t.Number({ minimum: 0 })),
             completed: t.Optional(t.Boolean()),
             metadata: t.Optional(t.Object({}))
-        })
+        }),
+        transform({ body }) {
+            return updateProgressSchema.parse(body);
+        }
     })
 
     // Get progress for specific item

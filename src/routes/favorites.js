@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
+import { addFavoriteSchema } from '../utils/validation.js';
 
 export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
     .use(authPlugin)
@@ -45,6 +46,9 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
     .post('/', async ({ body, getCurrentProfileId, getUserId, db }) => {
         const profileId = await getCurrentProfileId();
         const userId = await getUserId();
+        
+        // Validate request body
+        const validatedData = addFavoriteSchema.parse(body);
 
         if (!profileId) {
             throw new Error('No profile selected. Please select a profile first.');
@@ -86,11 +90,11 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
         try {
             const favorite = await db.insert('favorites', {
                 profile_id: profileId,
-                item_id: body.item_id,
-                item_type: body.item_type,
-                item_name: body.item_name,
-                item_logo: body.item_logo,
-                metadata: body.metadata || {}
+                item_id: validatedData.item_id,
+                item_type: validatedData.item_type,
+                item_name: validatedData.item_name,
+                item_logo: validatedData.item_logo,
+                metadata: validatedData.metadata || {}
             });
 
             return favorite;
@@ -111,7 +115,10 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
             item_name: t.Optional(t.String()),
             item_logo: t.Optional(t.String({ format: 'url' })),
             metadata: t.Optional(t.Object({}))
-        })
+        }),
+        transform({ body }) {
+            return addFavoriteSchema.parse(body);
+        }
     })
 
     // Remove favorite
