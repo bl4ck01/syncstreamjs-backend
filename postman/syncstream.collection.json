@@ -44,9 +44,43 @@
       "key": "clientId",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "planId",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
+    {
+      "name": "General",
+      "item": [
+        {
+          "name": "API Root",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/../",
+              "host": ["{{baseUrl}}"],
+              "path": ["..", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Available Languages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/languages",
+              "host": ["{{baseUrl}}"],
+              "path": ["languages"]
+            }
+          }
+        }
+      ]
+    },
     {
       "name": "Health Check",
       "item": [
@@ -946,6 +980,25 @@
         },
         {
           "name": "Create Plan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Plan ID is returned\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('id');",
+                  "    pm.collectionVariables.set(\"planId\", jsonData.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -1114,6 +1167,178 @@
                 {
                   "key": "limit",
                   "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Plan",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Updated Plan Name\",\n    \"price_monthly\": 39.99,\n    \"max_profiles\": 25,\n    \"features\": {\"ads\": false, \"hd\": true, \"4k\": true}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/plans/{{planId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "plans", "{{planId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "User Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/users?startDate=2024-01-01&endDate=2024-12-31&groupBy=month",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics", "users"],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2024-01-01"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2024-12-31"
+                },
+                {
+                  "key": "groupBy",
+                  "value": "month"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Revenue Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/revenue?startDate=2024-01-01&endDate=2024-12-31&groupBy=month",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics", "revenue"],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2024-01-01"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2024-12-31"
+                },
+                {
+                  "key": "groupBy",
+                  "value": "month"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Content Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/content",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics", "content"]
+            }
+          }
+        },
+        {
+          "name": "Reseller Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/resellers",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics", "resellers"]
+            }
+          }
+        },
+        {
+          "name": "Performance Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/performance",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics", "performance"]
+            }
+          }
+        },
+        {
+          "name": "Export Analytics Data",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "auth={{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/export?format=json&report=revenue",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics", "export"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "json",
+                  "description": "json or csv"
+                },
+                {
+                  "key": "report",
+                  "value": "revenue",
+                  "description": "users, subscriptions, or revenue"
                 }
               ]
             }

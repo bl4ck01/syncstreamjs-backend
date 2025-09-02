@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
+import { ConflictError, AuthenticationError, AuthorizationError } from '../utils/errors.js';
 import { signupSchema, loginSchema } from '../utils/validation.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 
@@ -9,7 +10,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     .use(databasePlugin)
 
     // Signup
-    .post('/signup', async ({ body, db, signToken, cookie: { auth } }) => {
+    .post('/signup', async ({ body, db, signToken, cookie: { auth }, set }) => {
         // Validate request body
         const validatedData = signupSchema.parse(body);
         const { email, password, full_name } = validatedData;
@@ -21,7 +22,8 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         );
 
         if (existingUser) {
-            throw new Error('User with this email already exists');
+            set.status = 409;
+            return { success: false, message: 'User with this email already exists', data: null };
         }
 
         // Hash password
@@ -59,7 +61,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         return {
             id: user.id,
             email: user.email,
-            role: user.role
+            token
         };
     }, {
         body: t.Object({
@@ -74,7 +76,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     })
 
     // Login
-    .post('/login', async ({ body, db, signToken, cookie: { auth } }) => {
+    .post('/login', async ({ body, db, signToken, cookie: { auth }, set }) => {
         // Validate request body
         const validatedData = loginSchema.parse(body);
         const { email, password } = validatedData;
@@ -86,14 +88,16 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         );
 
         if (!user) {
-            throw new Error('Invalid email or password');
+            set.status = 401;
+            return { success: false, message: 'Invalid email or password', data: null };
         }
 
         // Verify password
         const validPassword = await verifyPassword(password, user.password_hash);
 
         if (!validPassword) {
-            throw new Error('Invalid email or password');
+            set.status = 401;
+            return { success: false, message: 'Invalid email or password', data: null };
         }
 
         // Sign JWT token
@@ -135,7 +139,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         const user = await getUser();
 
         if (!user) {
-            throw new Error('Unauthorized');
+            throw new AuthorizationError('Unauthorized');
         }
 
         // Remove sensitive data

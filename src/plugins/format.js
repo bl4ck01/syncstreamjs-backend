@@ -12,6 +12,7 @@ export const formatPlugin = new Elysia({ name: 'format' })
             set.status = set.status || 200;
             return {
                 success: true,
+                message: undefined,
                 data: response
             };
         }
@@ -20,6 +21,7 @@ export const formatPlugin = new Elysia({ name: 'format' })
         set.status = set.status || 200;
         return {
             success: true,
+            message: undefined,
             data: null
         };
     })
@@ -61,6 +63,7 @@ export const formatPlugin = new Elysia({ name: 'format' })
 
         return {
             success: false,
-            message: message
+            message: message,
+            data: null
         };
     });

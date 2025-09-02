@@ -98,10 +98,8 @@ const app = new Elysia()
       set.status = 404;
       return {
         success: false,
-        error: {
-          message: 'Endpoint not found',
-          code: 'NOT_FOUND'
-        }
+        message: 'Endpoint not found',
+        data: null
       };
     }
   })

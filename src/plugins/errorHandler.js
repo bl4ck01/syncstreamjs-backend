@@ -43,11 +43,8 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
       set.status = error.statusCode;
       return {
         success: false,
-        error: {
-          message: error.message,
-          code: error.code,
-          ...(isDevelopment() && error.details && { details: error.details })
-        }
+        message: error.message,
+        data: null
       };
     }
     
@@ -56,11 +53,8 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
       set.status = 400;
       return {
         success: false,
-        error: {
-          message: 'Validation error',
-          code: 'VALIDATION_ERROR',
-          details: isDevelopment() ? error.message : undefined
-        }
+        message: 'Validation error',
+        data: null
       };
     }
     
@@ -69,10 +63,8 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
       set.status = 404;
       return {
         success: false,
-        error: {
-          message: 'Resource not found',
-          code: 'NOT_FOUND'
-        }
+        message: 'Resource not found',
+        data: null
       };
     }
     
@@ -81,10 +73,8 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
       set.status = 400;
       return {
         success: false,
-        error: {
-          message: 'Invalid request format',
-          code: 'PARSE_ERROR'
-        }
+        message: 'Invalid request format',
+        data: null
       };
     }
     
@@ -93,24 +83,28 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
       set.status = 500;
       return {
         success: false,
-        error: {
-          message: 'Database operation failed',
-          code: 'DATABASE_ERROR',
-          details: isDevelopment() ? error.message : undefined
-        }
+        message: 'Database operation failed',
+        data: null
       };
     }
     
     // Default error response
     set.status = error.statusCode || 500;
-    return {
-      success: false,
-      error: {
+    try {
+      return {
+        success: false,
         message: isDevelopment() ? error.message : 'An unexpected error occurred',
-        code: error.code || 'INTERNAL_ERROR',
-        ...(isDevelopment() && { stack: error.stack })
-      }
-    };
+        data: null
+      };
+    } catch {
+      // Final fallback to ensure JSON content-type
+      set.headers['Content-Type'] = 'application/json; charset=utf-8';
+      return {
+        success: false,
+        message: 'An unexpected error occurred',
+        data: null
+      };
+    }
   })
   .onBeforeHandle(({ request, set }) => {
     // Add request ID for tracking
