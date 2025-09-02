@@ -10,7 +10,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     .use(databasePlugin)
 
     // Signup
-    .post('/signup', async ({ body, db, signToken, cookie: { auth }, set }) => {
+    .post('/signup', async ({ body, db, signToken, set }) => {
         // Validate request body
         const validatedData = signupSchema.parse(body);
         const { email, password, full_name } = validatedData;
@@ -49,19 +49,16 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         // Sign JWT token
         const token = await signToken(user.id, user.email);
 
-        // Set cookie
-        auth.set({
-            value: token,
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60 // 7 days
-        });
-
         return {
-            id: user.id,
-            email: user.email,
-            token
+            success: true,
+            message: 'User registered successfully',
+            data: {
+                id: user.id,
+                email: user.email,
+                full_name: user.full_name,
+                role: user.role,
+                token
+            }
         };
     }, {
         body: t.Object({
@@ -76,7 +73,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     })
 
     // Login
-    .post('/login', async ({ body, db, signToken, cookie: { auth }, set }) => {
+    .post('/login', async ({ body, db, signToken, set }) => {
         // Validate request body
         const validatedData = loginSchema.parse(body);
         const { email, password } = validatedData;
@@ -103,19 +100,16 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         // Sign JWT token
         const token = await signToken(user.id, user.email);
 
-        // Set cookie
-        auth.set({
-            value: token,
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60 // 7 days
-        });
-
         return {
-            id: user.id,
-            email: user.email,
-            role: user.role
+            success: true,
+            message: 'Login successful',
+            data: {
+                id: user.id,
+                email: user.email,
+                full_name: user.full_name,
+                role: user.role,
+                token
+            }
         };
     }, {
         body: t.Object({
@@ -129,23 +123,44 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     })
 
     // Logout
-    .post('/logout', async ({ cookie: { auth } }) => {
-        auth.remove();
-        return { message: 'Logged out successfully' };
+    .post('/logout', async () => {
+        // With token-based auth, logout is handled client-side by removing the token
+        return { 
+            success: true,
+            message: 'Logged out successfully',
+            data: null
+        };
     })
 
     // Get current user
-    .get('/me', async ({ getUser }) => {
-        const user = await getUser();
+    .get('/me', async ({ getUser, set, getUserId }) => {
+        // Manual auth check
+        const userId = await getUserId();
+        if (!userId) {
+            set.status = 401;
+            return {
+                success: false,
+                message: 'Unauthorized - Invalid or missing authentication token',
+                data: null
+            };
+        }
 
+        const user = await getUser();
         if (!user) {
-            throw new AuthorizationError('Unauthorized');
+            set.status = 401;
+            return {
+                success: false,
+                message: 'Unauthorized - User not found',
+                data: null
+            };
         }
 
         // Remove sensitive data
         delete user.password_hash;
 
-        return user;
-    }, {
-        beforeHandle: ({ requireAuth }) => requireAuth(true)
+        return {
+            success: true,
+            message: null,
+            data: user
+        };
     });

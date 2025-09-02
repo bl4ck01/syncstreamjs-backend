@@ -31,7 +31,11 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
 
         const favorites = await db.getMany(sqlQuery, params);
 
-        return favorites;
+        return {
+            success: true,
+            message: null,
+            data: favorites
+        };
     }, {
         query: t.Object({
             type: t.Optional(t.Union([
@@ -97,7 +101,11 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
                 metadata: validatedData.metadata || {}
             });
 
-            return favorite;
+            return {
+                success: true,
+                message: 'Added to favorites',
+                data: favorite
+            };
         } catch (error) {
             if (error.code === '23505') { // Unique constraint violation
                 throw new Error('Item is already in favorites');
@@ -139,7 +147,11 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
             throw new Error('Favorite not found');
         }
 
-        return { message: 'Favorite removed successfully' };
+        return {
+            success: true,
+            message: 'Favorite removed successfully',
+            data: null
+        };
     }, {
         params: t.Object({
             itemId: t.String()
@@ -160,7 +172,11 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
             [profileId, itemId]
         );
 
-        return { is_favorite: !!favorite };
+        return {
+            success: true,
+            message: null,
+            data: { is_favorite: !!favorite }
+        };
     }, {
         params: t.Object({
             itemId: t.String()

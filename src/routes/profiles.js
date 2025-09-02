@@ -6,20 +6,30 @@ import { createProfileSchema, selectProfileSchema } from '../utils/validation.js
 export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .use(authPlugin)
     .use(databasePlugin)
-    .guard({
-        beforeHandle: ({ requireAuth }) => requireAuth()
-    })
 
     // Get all profiles for user
-    .get('/', async ({ getUserId, db }) => {
+    .get('/', async ({ getUserId, db, set }) => {
         const userId = await getUserId();
+        
+        if (!userId) {
+            set.status = 401;
+            return {
+                success: false,
+                message: 'Unauthorized - Invalid or missing authentication token',
+                data: null
+            };
+        }
 
         const profiles = await db.getMany(
             'SELECT id, name, avatar_url, is_kids_profile, created_at FROM profiles WHERE user_id = $1 ORDER BY created_at',
             [userId]
         );
 
-        return profiles;
+        return {
+            success: true,
+            message: null,
+            data: profiles
+        };
     })
 
     // Create new profile
@@ -64,7 +74,11 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         // Remove sensitive data
         delete profile.parental_pin;
 
-        return profile;
+        return {
+            success: true,
+            message: 'Profile created successfully',
+            data: profile
+        };
     }, {
         body: t.Object({
             name: t.String({ minLength: 1, maxLength: 100 }),
@@ -78,7 +92,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     })
 
     // Select profile (sets current profile in JWT)
-    .post('/:id/select', async ({ params, body, getUserId, db, signToken, cookie: { auth } }) => {
+    .post('/:id/select', async ({ params, body, getUserId, db, signToken }) => {
         const userId = await getUserId();
         const profileId = params.id;
 
@@ -109,18 +123,18 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         // Issue new JWT with selected profile
         const token = await signToken(userId, user.email, profileId);
 
-        // Set cookie
-        auth.set({
-            value: token,
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60 // 7 days
-        });
-
         return {
+            success: true,
             message: 'Profile selected successfully',
-            profile_id: profileId
+            data: {
+                token,
+                profile: {
+                    id: profile.id,
+                    name: profile.name,
+                    avatar_url: profile.avatar_url,
+                    is_kids_profile: profile.is_kids_profile
+                }
+            }
         };
     }, {
         params: t.Object({
@@ -162,7 +176,11 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         // Remove sensitive data
         delete profile.parental_pin;
 
-        return profile;
+        return {
+            success: true,
+            message: 'Profile updated successfully',
+            data: profile
+        };
     }, {
         params: t.Object({
             id: t.String()
@@ -200,7 +218,11 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             throw new Error('Profile not found');
         }
 
-        return { message: 'Profile deleted successfully' };
+        return {
+            success: true,
+            message: 'Profile deleted successfully',
+            data: null
+        };
     }, {
         params: t.Object({
             id: t.String()
