@@ -1,0 +1,120 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:17
+    container_name: database
+    restart: always
+    environment:
+      POSTGRES_DB: db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./src/db/optimize.sql:/docker-entrypoint-initdb.d/02-optimize.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: syncstream-redis
+  #   restart: unless-stopped
+  #   command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+  #   volumes:
+  #     - redis_data:/data
+  #   ports:
+  #     - "6379:6379"
+  #   networks:
+  #     - syncstream-network
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # Application
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: syncstream-app
+  #   restart: unless-stopped
+  #   environment:
+  #     NODE_ENV: production
+  #     DATABASE_URL: postgresql://syncstream:${DB_PASSWORD:-syncstream123}@postgres:5432/syncstream_db
+  #     REDIS_URL: redis://redis:6379
+  #     JWT_SECRET: ${JWT_SECRET}
+  #     STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+  #     STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+  #     PORT: 3000
+  #   env_file:
+  #     - .env
+  #   volumes:
+  #     - ./logs:/app/logs
+  #     - ./uploads:/app/uploads
+  #   ports:
+  #     - "3000:3000"
+  #   networks:
+  #     - syncstream-network
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3000/api/v1/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 40s
+
+  # Nginx Reverse Proxy
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: syncstream-nginx
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./ssl:/etc/nginx/ssl:ro
+  #     - nginx_cache:/var/cache/nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   networks:
+  #     - syncstream-network
+  #   depends_on:
+  #     - app
+
+  # PgAdmin (Optional - for database management)
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: syncstream-pgadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@syncstream.tv}
+  #     PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+  #     PGADMIN_CONFIG_SERVER_MODE: 'False'
+  #   volumes:
+  #     - pgadmin_data:/var/lib/pgadmin
+  #   ports:
+  #     - "5050:80"
+  #   networks:
+  #     - syncstream-network
+  #   depends_on:
+  #     - postgres
+  #   profiles:
+  #     - tools
+
+
+volumes:
+  postgres_data:
+  # redis_data:
+  # nginx_cache:
+  # pgadmin_data:
