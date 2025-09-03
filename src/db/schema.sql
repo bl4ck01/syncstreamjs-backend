@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     is_kids_profile BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, name) -- Ensure profile names are unique per user
 );
 
 -- Playlists table

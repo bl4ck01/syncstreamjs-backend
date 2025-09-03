@@ -61,6 +61,16 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             throw new Error(`Plan limit reached. Maximum profiles: ${maxProfiles}`);
         }
 
+        // Check if profile name already exists for this user
+        const existingProfile = await db.getOne(
+            'SELECT id FROM profiles WHERE user_id = $1 AND LOWER(name) = LOWER($2)',
+            [userId, name]
+        );
+
+        if (existingProfile) {
+            throw new Error(`A profile with the name "${name}" already exists. Please choose a different name.`);
+        }
+
         // Create profile (PIN stored as plain text)
         const profile = await db.insert('profiles', {
             user_id: userId,
@@ -149,6 +159,18 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             throw new Error('Profile not found');
         }
 
+        // Check if new name conflicts with existing profiles (if name is being updated)
+        if (body.name) {
+            const duplicateProfile = await db.getOne(
+                'SELECT id FROM profiles WHERE user_id = $1 AND LOWER(name) = LOWER($2) AND id != $3',
+                [userId, body.name, profileId]
+            );
+
+            if (duplicateProfile) {
+                throw new Error(`A profile with the name "${body.name}" already exists. Please choose a different name.`);
+            }
+        }
+
         // Prepare update data
         const updateData = {};
         Object.assign(updateData, body);
@@ -177,16 +199,6 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .delete('/:id', async ({ params, getUserId, db }) => {
         const userId = await getUserId();
         const profileId = params.id;
-
-        // Can't delete last profile
-        const profileCount = await db.getOne(
-            'SELECT COUNT(*) as count FROM profiles WHERE user_id = $1',
-            [userId]
-        );
-
-        if (parseInt(profileCount.count) <= 1) {
-            throw new Error('Cannot delete the last profile');
-        }
 
         // Delete profile (cascades to favorites and watch_progress)
         const result = await db.query(

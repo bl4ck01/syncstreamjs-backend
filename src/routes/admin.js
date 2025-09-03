@@ -64,9 +64,18 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
                 u.*,
                 s.status as subscription_status,
                 s.current_period_end,
-                p.name as plan_name
+                s.current_period_start,
+                s.cancel_at_period_end,
+                s.trial_end,
+                s.stripe_subscription_id,
+                s.stripe_price_id,
+                p.name as plan_name,
+                p.max_profiles,
+                p.max_playlists,
+                p.max_favorites,
+                p.price_monthly
             FROM users u
-            LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
+            LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing', 'canceled', 'past_due')
             LEFT JOIN plans p ON s.plan_id = p.id
             WHERE u.id = $1
         `, [userId]);
@@ -78,7 +87,140 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
         // Remove sensitive data
         delete user.password_hash;
 
-        return user;
+        // Get user's profiles
+        const profiles = await db.getMany(
+            'SELECT id, name, avatar_url, is_kids_profile, created_at FROM profiles WHERE user_id = $1 ORDER BY created_at',
+            [userId]
+        );
+
+        // Get user's playlists
+        const playlists = await db.getMany(
+            'SELECT id, name, url, username, is_active, created_at FROM playlists WHERE user_id = $1 ORDER BY created_at',
+            [userId]
+        );
+
+        // Get user's favorites count per profile
+        const favoritesStats = await db.getMany(`
+            SELECT 
+                p.id as profile_id,
+                p.name as profile_name,
+                COUNT(f.id) as favorites_count
+            FROM profiles p
+            LEFT JOIN favorites f ON p.id = f.profile_id
+            WHERE p.user_id = $1
+            GROUP BY p.id, p.name
+            ORDER BY p.created_at
+        `, [userId]);
+
+        // Get subscription history
+        const subscriptionHistory = await db.getMany(`
+            SELECT 
+                se.event_type,
+                se.created_at,
+                se.amount,
+                se.currency,
+                p.name as plan_name,
+                pp.name as previous_plan_name
+            FROM subscription_events se
+            LEFT JOIN plans p ON se.plan_id = p.id
+            LEFT JOIN plans pp ON se.previous_plan_id = pp.id
+            WHERE se.user_id = $1
+            ORDER BY se.created_at DESC
+            LIMIT 50
+        `, [userId]);
+
+        // Get credits transactions if user is a reseller
+        let creditsTransactions = [];
+        if (user.role === 'reseller') {
+            creditsTransactions = await db.getMany(`
+                SELECT 
+                    amount,
+                    balance_after,
+                    transaction_type,
+                    description,
+                    created_at
+                FROM credits_transactions
+                WHERE user_id = $1
+                ORDER BY created_at DESC
+                LIMIT 50
+            `, [userId]);
+        }
+
+        // Get clients if user is a reseller
+        let clients = [];
+        if (user.role === 'reseller') {
+            clients = await db.getMany(`
+                SELECT 
+                    u.id,
+                    u.email,
+                    u.full_name,
+                    u.created_at,
+                    s.status as subscription_status,
+                    p.name as plan_name
+                FROM users u
+                LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
+                LEFT JOIN plans p ON s.plan_id = p.id
+                WHERE u.parent_reseller_id = $1
+                ORDER BY u.created_at DESC
+            `, [userId]);
+        }
+
+        return {
+            success: true,
+            message: null,
+            data: {
+                // Basic user info
+                id: user.id,
+                email: user.email,
+                full_name: user.full_name,
+                role: user.role,
+                has_used_trial: user.has_used_trial,
+                credits_balance: user.credits_balance,
+                parent_reseller_id: user.parent_reseller_id,
+                stripe_customer_id: user.stripe_customer_id,
+                created_at: user.created_at,
+                updated_at: user.updated_at,
+                
+                // Current subscription info
+                subscription: {
+                    status: user.subscription_status,
+                    stripe_subscription_id: user.stripe_subscription_id,
+                    stripe_price_id: user.stripe_price_id,
+                    current_period_start: user.current_period_start,
+                    current_period_end: user.current_period_end,
+                    cancel_at_period_end: user.cancel_at_period_end,
+                    trial_end: user.trial_end,
+                    plan_name: user.plan_name,
+                    plan_limits: {
+                        max_profiles: user.max_profiles,
+                        max_playlists: user.max_playlists,
+                        max_favorites: user.max_favorites
+                    },
+                    price_monthly: user.price_monthly
+                },
+                
+                // Usage statistics
+                usage: {
+                    profiles_count: profiles.length,
+                    playlists_count: playlists.length,
+                    favorites_by_profile: favoritesStats
+                },
+                
+                // Detailed data
+                profiles,
+                playlists,
+                subscription_history: subscriptionHistory,
+                
+                // Reseller-specific data
+                ...(user.role === 'reseller' && {
+                    reseller_data: {
+                        credits_transactions: creditsTransactions,
+                        clients: clients,
+                        clients_count: clients.length
+                    }
+                })
+            }
+        };
     })
 
     // Manage plans
