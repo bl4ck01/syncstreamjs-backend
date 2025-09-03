@@ -3,12 +3,16 @@ import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
 import { checkoutSchema, changePlanSchema } from '../utils/schemas.js';
 import Stripe from 'stripe';
+import { createLogger, SUBSCRIPTION_EVENTS } from '../services/logger.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
     .use(authPlugin)
     .use(databasePlugin)
+    .derive(({ db }) => ({
+        logger: createLogger(db)
+    }))
 
     // Get current subscription
     .get('/current', async ({ getUserId, db, set }) => {
@@ -61,7 +65,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
     })
 
     // Create checkout session for new subscription or upgrade
-    .post('/checkout', async ({ body, getUserId, getUser, db, set }) => {
+    .post('/checkout', async ({ body, getUserId, getUser, db, set, logger }) => {
         const userId = await getUserId();
 
         if (!userId) {
@@ -140,6 +144,18 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         const successUrl = process.env.STRIPE_SUCCESS_URL || `${process.env.FRONTEND_URL}/subscription/success`;
         const cancelUrl = process.env.STRIPE_CANCEL_URL || `${process.env.FRONTEND_URL}/subscription/cancel`;
 
+        // Log checkout started
+        await logger.logSubscriptionEvent({
+            event_type: SUBSCRIPTION_EVENTS.CHECKOUT_STARTED,
+            user_id: userId,
+            plan_id: plan.id,
+            metadata: {
+                plan_name: plan.name,
+                price: plan.price_monthly,
+                trial_eligible: trialEligible
+            }
+        });
+
         // Create Stripe checkout session
         const session = await stripe.checkout.sessions.create({
             customer: stripeCustomerId,
@@ -178,7 +194,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
     })
 
     // Change subscription plan
-    .post('/change-plan', async ({ body, getUserId, getUser, db, set }) => {
+    .post('/change-plan', async ({ body, getUserId, getUser, db, set, logger }) => {
         const userId = await getUserId();
 
         if (!userId) {
@@ -229,6 +245,28 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 data: null
             };
         }
+        
+        // Get current plan details
+        const currentPlan = await db.getOne(
+            'SELECT * FROM plans WHERE id = $1',
+            [currentSubscription.plan_id]
+        );
+        
+        // Log plan change requested
+        await logger.logSubscriptionEvent({
+            event_type: SUBSCRIPTION_EVENTS.PLAN_CHANGE_REQUESTED,
+            user_id: userId,
+            subscription_id: currentSubscription.id,
+            stripe_subscription_id: currentSubscription.stripe_subscription_id,
+            plan_id: newPlan.id,
+            previous_plan_id: currentSubscription.plan_id,
+            metadata: {
+                old_plan: currentPlan?.name,
+                new_plan: newPlan.name,
+                old_price: currentPlan?.price_monthly,
+                new_price: newPlan.price_monthly
+            }
+        });
 
         // Get the Stripe subscription
         const stripeSubscription = await stripe.subscriptions.retrieve(
@@ -252,6 +290,20 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         );
 
         // Note: The actual database update will happen via webhook
+        
+        // Log plan change scheduled
+        await logger.logSubscriptionEvent({
+            event_type: SUBSCRIPTION_EVENTS.PLAN_CHANGE_SCHEDULED,
+            user_id: userId,
+            subscription_id: currentSubscription.id,
+            stripe_subscription_id: currentSubscription.stripe_subscription_id,
+            plan_id: newPlan.id,
+            previous_plan_id: currentSubscription.plan_id,
+            metadata: {
+                status: updatedSubscription.status,
+                effective_date: 'immediate'
+            }
+        });
 
         return {
             success: true,
@@ -266,7 +318,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
     })
 
     // Cancel subscription
-    .post('/cancel', async ({ getUserId, db, set }) => {
+    .post('/cancel', async ({ getUserId, db, set, logger }) => {
         const userId = await getUserId();
 
         if (!userId) {
@@ -306,6 +358,20 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             'UPDATE subscriptions SET cancel_at_period_end = TRUE WHERE id = $1',
             [subscription.id]
         );
+        
+        // Log subscription cancellation scheduled
+        await logger.logSubscriptionEvent({
+            event_type: SUBSCRIPTION_EVENTS.SUBSCRIPTION_CANCELED,
+            user_id: userId,
+            subscription_id: subscription.id,
+            stripe_subscription_id: subscription.stripe_subscription_id,
+            plan_id: subscription.plan_id,
+            metadata: {
+                cancel_at_period_end: true,
+                cancellation_date: new Date(canceledSubscription.current_period_end * 1000).toISOString(),
+                reason: 'user_requested'
+            }
+        });
 
         return {
             success: true,
@@ -317,7 +383,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
     })
 
     // Reactivate canceled subscription
-    .post('/reactivate', async ({ getUserId, db, set }) => {
+    .post('/reactivate', async ({ getUserId, db, set, logger }) => {
         const userId = await getUserId();
 
         if (!userId) {
@@ -357,6 +423,18 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             'UPDATE subscriptions SET cancel_at_period_end = FALSE WHERE id = $1',
             [subscription.id]
         );
+        
+        // Log subscription reactivation
+        await logger.logSubscriptionEvent({
+            event_type: SUBSCRIPTION_EVENTS.SUBSCRIPTION_REACTIVATED,
+            user_id: userId,
+            subscription_id: subscription.id,
+            stripe_subscription_id: subscription.stripe_subscription_id,
+            plan_id: subscription.plan_id,
+            metadata: {
+                reactivation_date: new Date().toISOString()
+            }
+        });
 
         return {
             success: true,

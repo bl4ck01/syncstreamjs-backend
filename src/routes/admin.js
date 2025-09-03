@@ -2,10 +2,14 @@ import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
 import { adminAddCreditsSchema, createPlanSchema, updatePlanSchema, idParamSchema, searchPaginationSchema } from '../utils/schemas.js';
+import { createLogger } from '../services/logger.js';
 
 export const adminRoutes = new Elysia({ prefix: '/admin' })
     .use(authPlugin)
     .use(databasePlugin)
+    .derive(({ db }) => ({
+        logger: createLogger(db)
+    }))
     .guard({
         beforeHandle: async ({ getUser, set }) => {
             const user = await getUser();
@@ -233,4 +237,294 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
                 t.Literal('admin')
             ])
         })
+    })
+
+    // Get security events
+    .get('/logs/security', async ({ query, db, logger }) => {
+        const { 
+            page = 1, 
+            limit = 50, 
+            user_id, 
+            email, 
+            event_type,
+            success,
+            start_date,
+            end_date,
+            ip_address
+        } = query;
+        
+        const offset = (page - 1) * limit;
+        let conditions = [];
+        let params = [];
+        let paramCount = 0;
+
+        if (user_id) {
+            conditions.push(`user_id = $${++paramCount}`);
+            params.push(user_id);
+        }
+        
+        if (email) {
+            conditions.push(`email ILIKE $${++paramCount}`);
+            params.push(`%${email}%`);
+        }
+        
+        if (event_type) {
+            conditions.push(`event_type = $${++paramCount}`);
+            params.push(event_type);
+        }
+        
+        if (success !== undefined) {
+            conditions.push(`success = $${++paramCount}`);
+            params.push(success === 'true');
+        }
+        
+        if (start_date) {
+            conditions.push(`created_at >= $${++paramCount}`);
+            params.push(new Date(start_date));
+        }
+        
+        if (end_date) {
+            conditions.push(`created_at <= $${++paramCount}`);
+            params.push(new Date(end_date));
+        }
+        
+        if (ip_address) {
+            conditions.push(`ip_address = $${++paramCount}`);
+            params.push(ip_address);
+        }
+        
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        
+        // Get total count
+        const countResult = await db.getOne(
+            `SELECT COUNT(*) as total FROM security_events ${whereClause}`,
+            params
+        );
+        
+        // Get events
+        params.push(limit);
+        params.push(offset);
+        
+        const events = await db.query(`
+            SELECT 
+                se.*,
+                u.email as user_email,
+                u.full_name as user_name
+            FROM security_events se
+            LEFT JOIN users u ON se.user_id = u.id
+            ${whereClause}
+            ORDER BY se.created_at DESC
+            LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
+        `, params);
+        
+        return {
+            success: true,
+            data: {
+                events: events.rows,
+                total: parseInt(countResult.total),
+                page,
+                limit,
+                total_pages: Math.ceil(countResult.total / limit)
+            }
+        };
+    })
+
+    // Get subscription events
+    .get('/logs/subscriptions', async ({ query, db, logger }) => {
+        const { 
+            page = 1, 
+            limit = 50, 
+            user_id,
+            subscription_id,
+            event_type,
+            plan_id,
+            start_date,
+            end_date
+        } = query;
+        
+        const offset = (page - 1) * limit;
+        let conditions = [];
+        let params = [];
+        let paramCount = 0;
+
+        if (user_id) {
+            conditions.push(`se.user_id = $${++paramCount}`);
+            params.push(user_id);
+        }
+        
+        if (subscription_id) {
+            conditions.push(`se.subscription_id = $${++paramCount}`);
+            params.push(subscription_id);
+        }
+        
+        if (event_type) {
+            conditions.push(`se.event_type = $${++paramCount}`);
+            params.push(event_type);
+        }
+        
+        if (plan_id) {
+            conditions.push(`(se.plan_id = $${++paramCount} OR se.previous_plan_id = $${paramCount})`);
+            params.push(plan_id);
+        }
+        
+        if (start_date) {
+            conditions.push(`se.created_at >= $${++paramCount}`);
+            params.push(new Date(start_date));
+        }
+        
+        if (end_date) {
+            conditions.push(`se.created_at <= $${++paramCount}`);
+            params.push(new Date(end_date));
+        }
+        
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        
+        // Get total count
+        const countResult = await db.getOne(
+            `SELECT COUNT(*) as total FROM subscription_events se ${whereClause}`,
+            params
+        );
+        
+        // Get events
+        params.push(limit);
+        params.push(offset);
+        
+        const events = await db.query(`
+            SELECT 
+                se.*,
+                u.email as user_email,
+                u.full_name as user_name,
+                p.name as plan_name,
+                pp.name as previous_plan_name
+            FROM subscription_events se
+            LEFT JOIN users u ON se.user_id = u.id
+            LEFT JOIN plans p ON se.plan_id = p.id
+            LEFT JOIN plans pp ON se.previous_plan_id = pp.id
+            ${whereClause}
+            ORDER BY se.created_at DESC
+            LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
+        `, params);
+        
+        return {
+            success: true,
+            data: {
+                events: events.rows,
+                total: parseInt(countResult.total),
+                page,
+                limit,
+                total_pages: Math.ceil(countResult.total / limit)
+            }
+        };
+    })
+
+    // Get security analytics
+    .get('/analytics/security', async ({ query, logger }) => {
+        const { days = 7 } = query;
+        
+        const analytics = await logger.getSecurityAnalytics(days);
+        
+        // Group by event type and calculate success rates
+        const summary = {};
+        analytics.rows.forEach(row => {
+            if (!summary[row.event_type]) {
+                summary[row.event_type] = {
+                    total: 0,
+                    success: 0,
+                    failed: 0
+                };
+            }
+            
+            summary[row.event_type].total += parseInt(row.count);
+            if (row.success) {
+                summary[row.event_type].success += parseInt(row.count);
+            } else {
+                summary[row.event_type].failed += parseInt(row.count);
+            }
+        });
+        
+        // Calculate success rates
+        Object.keys(summary).forEach(eventType => {
+            const s = summary[eventType];
+            s.success_rate = s.total > 0 ? (s.success / s.total * 100).toFixed(2) : 0;
+        });
+        
+        return {
+            success: true,
+            data: {
+                summary,
+                daily_breakdown: analytics.rows,
+                period_days: days
+            }
+        };
+    })
+
+    // Get subscription analytics
+    .get('/analytics/subscriptions', async ({ query, logger }) => {
+        const { days = 7 } = query;
+        
+        const analytics = await logger.getSubscriptionAnalytics(days);
+        
+        // Calculate revenue and event summaries
+        const summary = {
+            total_revenue: 0,
+            total_events: 0,
+            events_by_type: {}
+        };
+        
+        analytics.rows.forEach(row => {
+            summary.total_events += parseInt(row.count);
+            summary.total_revenue += parseFloat(row.total_amount || 0);
+            
+            if (!summary.events_by_type[row.event_type]) {
+                summary.events_by_type[row.event_type] = {
+                    count: 0,
+                    revenue: 0
+                };
+            }
+            
+            summary.events_by_type[row.event_type].count += parseInt(row.count);
+            summary.events_by_type[row.event_type].revenue += parseFloat(row.total_amount || 0);
+        });
+        
+        return {
+            success: true,
+            data: {
+                summary,
+                daily_breakdown: analytics.rows,
+                period_days: days
+            }
+        };
+    })
+
+    // Get user activity logs
+    .get('/users/:id/activity', async ({ params, query, db, logger }) => {
+        const userId = params.id;
+        const { type = 'all', limit = 100 } = query;
+        
+        let securityEvents = [];
+        let subscriptionEvents = [];
+        
+        if (type === 'all' || type === 'security') {
+            const security = await logger.getUserSecurityEvents(userId, { limit });
+            securityEvents = security.rows.map(e => ({ ...e, log_type: 'security' }));
+        }
+        
+        if (type === 'all' || type === 'subscription') {
+            const subscription = await logger.getUserSubscriptionEvents(userId, { limit });
+            subscriptionEvents = subscription.rows.map(e => ({ ...e, log_type: 'subscription' }));
+        }
+        
+        // Merge and sort by created_at
+        const allEvents = [...securityEvents, ...subscriptionEvents]
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .slice(0, limit);
+        
+        return {
+            success: true,
+            data: {
+                user_id: userId,
+                events: allEvents,
+                total: allEvents.length
+            }
+        };
     });
