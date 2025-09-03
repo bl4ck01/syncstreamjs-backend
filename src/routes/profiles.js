@@ -61,23 +61,31 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             throw new Error(`Plan limit reached. Maximum profiles: ${maxProfiles}`);
         }
 
-        // Create profile (PIN stored as plain text)
-        const profile = await db.insert('profiles', {
-            user_id: userId,
-            name,
-            avatar_url,
-            parental_pin: parental_pin || null,
-            is_kids_profile: is_kids_profile || false
-        });
+        try {
+            // Create profile (PIN stored as plain text)
+            const profile = await db.insert('profiles', {
+                user_id: userId,
+                name,
+                avatar_url,
+                parental_pin: parental_pin || null,
+                is_kids_profile: is_kids_profile || false
+            });
 
-        // Remove sensitive data
-        delete profile.parental_pin;
+            // Remove sensitive data
+            delete profile.parental_pin;
 
-        return {
-            success: true,
-            message: 'Profile created successfully',
-            data: profile
-        };
+            return {
+                success: true,
+                message: 'Profile created successfully',
+                data: profile
+            };
+        } catch (error) {
+            // Handle unique constraint violation (case-sensitive)
+            if (error.code === '23505') {
+                throw new Error(`A profile with the name "${name}" already exists. Please choose a different name.`);
+            }
+            throw error;
+        }
     }, {
         body: createProfileSchema
     })
@@ -158,16 +166,24 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             updateData.parental_pin = body.parental_pin || null;
         }
 
-        const profile = await db.update('profiles', profileId, updateData);
+        try {
+            const profile = await db.update('profiles', profileId, updateData);
 
-        // Remove sensitive data
-        delete profile.parental_pin;
+            // Remove sensitive data
+            delete profile.parental_pin;
 
-        return {
-            success: true,
-            message: 'Profile updated successfully',
-            data: profile
-        };
+            return {
+                success: true,
+                message: 'Profile updated successfully',
+                data: profile
+            };
+        } catch (error) {
+            // Handle unique constraint violation (case-insensitive)
+            if (error.code === '23505') {
+                throw new Error(`A profile with the name "${body.name}" already exists. Please choose a different name.`);
+            }
+            throw error;
+        }
     }, {
         params: idParamSchema,
         body: updateProfileSchema
@@ -177,16 +193,6 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .delete('/:id', async ({ params, getUserId, db }) => {
         const userId = await getUserId();
         const profileId = params.id;
-
-        // Can't delete last profile
-        const profileCount = await db.getOne(
-            'SELECT COUNT(*) as count FROM profiles WHERE user_id = $1',
-            [userId]
-        );
-
-        if (parseInt(profileCount.count) <= 1) {
-            throw new Error('Cannot delete the last profile');
-        }
 
         // Delete profile (cascades to favorites and watch_progress)
         const result = await db.query(
