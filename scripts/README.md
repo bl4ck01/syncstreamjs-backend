@@ -162,6 +162,18 @@ FRONTEND_URL=https://yourdomain.com
 - Plan limits and features are extracted from Stripe metadata
 - Default values are applied if metadata is missing
 
+## Sync Directions
+
+### Stripe → Database (Standard)
+- **Purpose**: Import Stripe plans to your database
+- **Use when**: Setting up new plans, syncing from Stripe dashboard
+- **Scripts**: `stripe:sync`, `stripe:sync:enhanced`
+
+### Database → Stripe (Reverse)
+- **Purpose**: Export your database plans to Stripe
+- **Use when**: Creating Stripe products from your plans, ensuring Stripe matches DB
+- **Scripts**: `stripe:sync:to-stripe`
+
 ## Security Features
 
 ### Checkout Security
