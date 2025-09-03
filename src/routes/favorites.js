@@ -82,7 +82,7 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
       SELECT 
         COALESCE(p.max_favorites, 50) as max_favorites
       FROM users u
-      LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status = 'active'
+      LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
       LEFT JOIN plans p ON s.plan_id = p.id
       WHERE u.id = $1
     `, [userId]);
