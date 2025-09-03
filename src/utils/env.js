@@ -97,7 +97,6 @@ try {
 // Helper functions
 export const isDevelopment = () => env.NODE_ENV === 'development';
 export const isProduction = () => env.NODE_ENV === 'production';
-export const isTest = () => env.NODE_ENV === 'test';
 
 // Feature flags
 export const isFeatureEnabled = (feature) => {

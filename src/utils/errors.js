@@ -29,12 +29,6 @@ export class AuthorizationError extends AppError {
     }
 }
 
-export class NotFoundError extends AppError {
-    constructor(resource = 'Resource') {
-        super(`${resource} not found`, 404, 'NOT_FOUND');
-    }
-}
-
 export class ConflictError extends AppError {
     constructor(message) {
         super(message, 409, 'CONFLICT_ERROR');
@@ -44,12 +38,6 @@ export class ConflictError extends AppError {
 export class RateLimitError extends AppError {
     constructor(message = 'Too many requests') {
         super(message, 429, 'RATE_LIMIT_ERROR');
-    }
-}
-
-export class PaymentError extends AppError {
-    constructor(message = 'Payment required', details = null) {
-        super(message, 402, 'PAYMENT_ERROR', details);
     }
 }
 
@@ -66,51 +54,6 @@ export class StripeError extends AppError {
         this.stripeError = stripeError;
     }
 }
-
-export class ExternalServiceError extends AppError {
-    constructor(service, message = 'External service error', originalError = null) {
-        super(`${service}: ${message}`, 503, 'EXTERNAL_SERVICE_ERROR');
-        this.service = service;
-        this.originalError = originalError;
-    }
-}
-
-// Error handler utility
-export const handleError = (error, context = '') => {
-    // Log error with context
-    console.error(`[${new Date().toISOString()}] Error in ${context}:`, {
-        message: error.message,
-        code: error.code,
-        stack: error.stack,
-        details: error.details
-    });
-
-    // Send to monitoring service in production
-    if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
-        // Sentry integration would go here
-    }
-
-    // Return appropriate error response
-    if (error.isOperational) {
-        return {
-            success: false,
-            error: {
-                message: error.message,
-                code: error.code,
-                details: error.details
-            }
-        };
-    }
-
-    // For non-operational errors, return generic message
-    return {
-        success: false,
-        error: {
-            message: 'An unexpected error occurred',
-            code: 'INTERNAL_ERROR'
-        }
-    };
-};
 
 // Database error handler
 export const handleDatabaseError = (error) => {

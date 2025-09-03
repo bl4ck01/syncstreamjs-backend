@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { addFavoriteSchema } from '../utils/validation.js';
+import { addFavoriteSchema } from '../utils/schemas.js';
 
 export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
     .use(authPlugin)
@@ -51,8 +51,7 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
         const profileId = await getCurrentProfileId();
         const userId = await getUserId();
 
-        // Validate request body
-        const validatedData = addFavoriteSchema.parse(body);
+        const validatedData = body;
 
         if (!profileId) {
             throw new Error('No profile selected. Please select a profile first.');
@@ -113,20 +112,7 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
             throw error;
         }
     }, {
-        body: t.Object({
-            item_id: t.String({ minLength: 1 }),
-            item_type: t.Union([
-                t.Literal('channel'),
-                t.Literal('movie'),
-                t.Literal('series')
-            ]),
-            item_name: t.Optional(t.String()),
-            item_logo: t.Optional(t.String({ format: 'url' })),
-            metadata: t.Optional(t.Object({}))
-        }),
-        transform({ body }) {
-            return addFavoriteSchema.parse(body);
-        }
+        body: addFavoriteSchema
     })
 
     // Remove favorite
