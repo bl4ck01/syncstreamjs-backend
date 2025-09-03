@@ -1,6 +1,7 @@
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
+import { createProfileSchema, updateProfileSchema, selectProfileSchema, idParamSchema } from '../utils/schemas.js';
 
 export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .use(authPlugin)
@@ -78,12 +79,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             data: profile
         };
     }, {
-        body: t.Object({
-            name: t.String({ minLength: 1, maxLength: 100 }),
-            avatar_url: t.Optional(t.String({ format: 'url' })),
-            parental_pin: t.Optional(t.String({ pattern: '^\\d{4}$' })),
-            is_kids_profile: t.Optional(t.Boolean())
-        })
+        body: createProfileSchema
     })
 
     // Select profile (sets current profile in JWT)
@@ -132,12 +128,8 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             }
         };
     }, {
-        params: t.Object({
-            id: t.String()
-        }),
-        body: t.Object({
-            pin: t.Optional(t.String({ pattern: '^\\d{4}$' }))
-        })
+        params: idParamSchema,
+        body: selectProfileSchema
     })
 
     // Update profile
@@ -157,9 +149,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
 
         // Prepare update data
         const updateData = {};
-        if (body.name !== undefined) updateData.name = body.name;
-        if (body.avatar_url !== undefined) updateData.avatar_url = body.avatar_url;
-        if (body.is_kids_profile !== undefined) updateData.is_kids_profile = body.is_kids_profile;
+        Object.assign(updateData, body);
 
         // Handle PIN update (plain text)
         if (body.parental_pin !== undefined) {
@@ -177,15 +167,8 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             data: profile
         };
     }, {
-        params: t.Object({
-            id: t.String()
-        }),
-        body: t.Object({
-            name: t.Optional(t.String({ minLength: 1, maxLength: 100 })),
-            avatar_url: t.Optional(t.String({ format: 'url' })),
-            parental_pin: t.Optional(t.String({ pattern: '^\\d{4}$' })),
-            is_kids_profile: t.Optional(t.Boolean())
-        })
+        params: idParamSchema,
+        body: updateProfileSchema
     })
 
     // Delete profile
@@ -219,7 +202,5 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             data: null
         };
     }, {
-        params: t.Object({
-            id: t.String()
-        })
+        params: idParamSchema
     });

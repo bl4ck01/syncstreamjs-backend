@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { adminAddCreditsSchema } from '../utils/validation.js';
+import { adminAddCreditsSchema, createPlanSchema, updatePlanSchema, idParamSchema, searchPaginationSchema } from '../utils/schemas.js';
 
 export const adminRoutes = new Elysia({ prefix: '/admin' })
     .use(authPlugin)
@@ -52,11 +52,7 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
             pages: Math.ceil(totalResult.total / limit)
         };
     }, {
-        query: t.Object({
-            page: t.Optional(t.Number({ minimum: 1 })),
-            limit: t.Optional(t.Number({ minimum: 1, maximum: 100 })),
-            search: t.Optional(t.String())
-        })
+        query: searchPaginationSchema
     })
 
     // Get user details with subscription
@@ -100,16 +96,7 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
         const plan = await db.insert('plans', body);
         return plan;
     }, {
-        body: t.Object({
-            name: t.String(),
-            stripe_price_id: t.Optional(t.String()),
-            price_monthly: t.Number(),
-            max_profiles: t.Number(),
-            max_playlists: t.Number(),
-            max_favorites: t.Number(),
-            features: t.Optional(t.Object({})),
-            is_active: t.Optional(t.Boolean())
-        })
+        body: createPlanSchema
     })
 
     // Update plan
@@ -120,25 +107,14 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
         }
         return plan;
     }, {
-        params: t.Object({
-            id: t.String()
-        }),
-        body: t.Object({
-            name: t.Optional(t.String()),
-            stripe_price_id: t.Optional(t.String()),
-            price_monthly: t.Optional(t.Number()),
-            max_profiles: t.Optional(t.Number()),
-            max_playlists: t.Optional(t.Number()),
-            max_favorites: t.Optional(t.Number()),
-            features: t.Optional(t.Object({})),
-            is_active: t.Optional(t.Boolean())
-        })
+        params: idParamSchema,
+        body: updatePlanSchema
     })
 
     // Add credits to user (manual)
     .post('/credits/add', async ({ body, db, getUser }) => {
         const admin = await getUser();
-        const { user_id, amount, description } = adminAddCreditsSchema.parse(body);
+        const { user_id, amount, description } = body;
 
         const result = await db.transaction(async (tx) => {
             // Lock user row and get current balance
@@ -183,14 +159,7 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
 
         return result;
     }, {
-        body: t.Object({
-            user_id: t.String(),
-            amount: t.Number({ minimum: 1 }),
-            description: t.Optional(t.String())
-        }),
-        transform({ body }) {
-            return adminAddCreditsSchema.parse(body);
-        }
+        body: adminAddCreditsSchema
     })
 
     // Get system statistics
@@ -256,9 +225,7 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
 
         return { message: `User role updated to ${role}` };
     }, {
-        params: t.Object({
-            id: t.String()
-        }),
+        params: idParamSchema,
         body: t.Object({
             role: t.Union([
                 t.Literal('user'),

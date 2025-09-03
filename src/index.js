@@ -2,7 +2,7 @@ import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 
 // Import environment configuration
-import env, { isDevelopment, isProduction } from './utils/env.js';
+import env, { isDevelopment } from './utils/env.js';
 
 // Import plugins
 import { formatPlugin } from './plugins/format.js';
@@ -28,16 +28,7 @@ import { adminRoutes } from './routes/admin.js';
 import { resellerRoutes } from './routes/resellers.js';
 import { analyticsRoutes } from './routes/analytics.js';
 
-// Import WebSocket plugin
-// import { websocketPlugin } from './websocket/index.js'; // Disabled for future implementation
-
-// Configure server options
-const serverOptions = {
-  port: env.PORT,
-  hostname: '0.0.0.0',
-  development: isDevelopment()
-};
-
+// Create and configure the app
 const app = new Elysia()
   // Error handling (must be first)
   .use(errorHandlerPlugin)
@@ -60,9 +51,6 @@ const app = new Elysia()
   .use(rateLimiterPlugin)
   .use(optimizationPlugin)
   .use(i18nPlugin)
-
-  // WebSocket support - Disabled for future implementation
-  // .use(websocketPlugin)
 
   // API versioning group
   .group(`/api/${env.API_VERSION}`, app => app
@@ -95,74 +83,18 @@ const app = new Elysia()
       api: `/api/${env.API_VERSION}`,
       health: `/api/${env.API_VERSION}/health`,
       documentation: '/docs'
-      // websocket: '/ws/connect' // Disabled for future implementation
     }
   }))
 
-    // Global error handler to ensure all errors follow standard format
+  // Global error handler to ensure all errors follow standard format
   .onError(({ code, error, set }) => {
     // Let the errorHandlerPlugin handle most errors
     // This is just a fallback to ensure standard format
     if (code === 'VALIDATION') {
       set.status = 400;
-      
-      // Extract specific validation error details from Elysia's error structure
-      let message = 'Validation error';
-      
-      if (error.valueError) {
-        const field = error.valueError.path?.replace('/', '') || 'field';
-        const errorMessage = error.valueError.message || 'is invalid';
-        
-        if (errorMessage.includes('Expected string')) {
-          message = `${field} is required`;
-        } else if (errorMessage.includes('Expected email')) {
-          message = `${field} must be a valid email address`;
-        } else if (errorMessage.includes('Expected URL')) {
-          message = `${field} must be a valid URL`;
-        } else if (errorMessage.includes('Expected regex')) {
-          message = `${field} format is invalid`;
-        } else if (errorMessage.includes('Expected minimum')) {
-          const match = errorMessage.match(/Expected minimum (\d+)/);
-          if (match) {
-            message = `${field} must be at least ${match[1]} characters`;
-          } else {
-            message = `${field} ${errorMessage.toLowerCase()}`;
-          }
-        } else {
-          message = `${field} ${errorMessage.toLowerCase()}`;
-        }
-      } else if (error.all && Array.isArray(error.all)) {
-        // Fallback for other validation error structures
-        const errors = error.all.map(err => {
-          if (err.path && err.path.length > 0) {
-            const field = err.path[err.path.length - 1];
-            if (err.code === 'invalid_type' && err.received === 'undefined') {
-              return `${field} is required`;
-            } else if (err.code === 'invalid_string' && err.validation === 'email') {
-              return `${field} must be a valid email address`;
-            } else if (err.code === 'too_small' && err.type === 'string') {
-              return `${field} must be at least ${err.minimum} characters`;
-            } else if (err.code === 'invalid_string' && err.validation === 'url') {
-              return `${field} must be a valid URL`;
-            } else if (err.code === 'invalid_string' && err.validation === 'regex') {
-              return `${field} format is invalid`;
-            } else {
-              return `${field} is invalid`;
-            }
-          }
-          return 'Field is invalid';
-        });
-        
-        if (errors.length === 1) {
-          message = errors[0];
-        } else if (errors.length > 1) {
-          message = `Multiple validation errors: ${errors.join(', ')}`;
-        }
-      }
-      
       return {
         success: false,
-        message: message,
+        message: parseValidationError(error),
         data: null
       };
     }
@@ -195,7 +127,64 @@ const app = new Elysia()
   })
 
   // Start server
-  .listen(serverOptions);
+  .listen({
+    port: env.PORT,
+    hostname: '0.0.0.0',
+    development: isDevelopment()
+  });
+
+// Helper function to parse validation errors
+function parseValidationError(error) {
+  if (error.valueError) {
+    const field = error.valueError.path?.replace('/', '') || 'field';
+    const errorMessage = error.valueError.message || 'is invalid';
+    
+    if (errorMessage.includes('Expected string')) {
+      return `${field} is required`;
+    } else if (errorMessage.includes('Expected email')) {
+      return `${field} must be a valid email address`;
+    } else if (errorMessage.includes('Expected URL')) {
+      return `${field} must be a valid URL`;
+    } else if (errorMessage.includes('Expected regex')) {
+      return `${field} format is invalid`;
+    } else if (errorMessage.includes('Expected minimum')) {
+      const match = errorMessage.match(/Expected minimum (\d+)/);
+      if (match) {
+        return `${field} must be at least ${match[1]} characters`;
+      }
+    }
+    return `${field} ${errorMessage.toLowerCase()}`;
+  }
+  
+  if (error.all && Array.isArray(error.all)) {
+    const errors = error.all.map(err => {
+      if (err.path && err.path.length > 0) {
+        const field = err.path[err.path.length - 1];
+        if (err.code === 'invalid_type' && err.received === 'undefined') {
+          return `${field} is required`;
+        } else if (err.code === 'invalid_string' && err.validation === 'email') {
+          return `${field} must be a valid email address`;
+        } else if (err.code === 'too_small' && err.type === 'string') {
+          return `${field} must be at least ${err.minimum} characters`;
+        } else if (err.code === 'invalid_string' && err.validation === 'url') {
+          return `${field} must be a valid URL`;
+        } else if (err.code === 'invalid_string' && err.validation === 'regex') {
+          return `${field} format is invalid`;
+        }
+        return `${field} is invalid`;
+      }
+      return 'Field is invalid';
+    });
+    
+    if (errors.length === 1) {
+      return errors[0];
+    } else if (errors.length > 1) {
+      return `Multiple validation errors: ${errors.join(', ')}`;
+    }
+  }
+  
+  return 'Validation error';
+}
 
 // Startup messages
 console.log('🚀 SyncStream TV Backend Starting...');
@@ -205,7 +194,6 @@ console.log(`🗣️  Languages: ${env.SUPPORTED_LANGUAGES}`);
 console.log(`🔒 Rate Limiting: ${env.RATE_LIMIT_MAX_REQUESTS} requests per ${env.RATE_LIMIT_WINDOW_MS / 60000} minutes`);
 console.log(`💾 Database: ${env.DATABASE_URL.split('@')[1]?.split('/')[0] || 'configured'}`);
 console.log(`💳 Stripe: ${env.STRIPE_SECRET_KEY.startsWith('sk_test') ? 'Test Mode' : 'Live Mode'}`);
-console.log(`🔌 WebSocket: Watch Party service disabled (future feature)`);
 console.log(`✅ Server running at http://${app.server?.hostname}:${app.server?.port}`);
 
 // Graceful shutdown

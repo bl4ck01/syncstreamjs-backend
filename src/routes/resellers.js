@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { createClientSchema } from '../utils/validation.js';
+import { createClientSchema, paginationSchema } from '../utils/schemas.js';
 import { hashPassword } from '../utils/password.js';
 import Stripe from 'stripe';
 
@@ -94,17 +94,13 @@ export const resellerRoutes = new Elysia({ prefix: '/reseller' })
             pages: Math.ceil(totalResult.total / limit)
         };
     }, {
-        query: t.Object({
-            page: t.Optional(t.Number({ minimum: 1 })),
-            limit: t.Optional(t.Number({ minimum: 1, maximum: 100 }))
-        })
+        query: paginationSchema
     })
 
     // Create client account
     .post('/clients', async ({ body, getUserId, db }) => {
         const resellerId = await getUserId();
-        const validatedData = createClientSchema.parse(body);
-        const { email, password, full_name, plan_stripe_price_id } = validatedData;
+        const { email, password, full_name, plan_stripe_price_id } = body;
         
         // Get plan details and cost
         const plan = await db.getOne(
@@ -220,15 +216,7 @@ export const resellerRoutes = new Elysia({ prefix: '/reseller' })
         
         return result;
     }, {
-        body: t.Object({
-            email: t.String({ format: 'email' }),
-            password: t.String({ minLength: 8 }),
-            full_name: t.Optional(t.String()),
-            plan_stripe_price_id: t.String()
-        }),
-        transform({ body }) {
-            return createClientSchema.parse(body);
-        }
+        body: createClientSchema
     })
 
     // Get credit transactions
@@ -257,8 +245,5 @@ export const resellerRoutes = new Elysia({ prefix: '/reseller' })
             pages: Math.ceil(totalResult.total / limit)
         };
     }, {
-        query: t.Object({
-            page: t.Optional(t.Number({ minimum: 1 })),
-            limit: t.Optional(t.Number({ minimum: 1, maximum: 100 }))
-        })
+        query: paginationSchema
     });

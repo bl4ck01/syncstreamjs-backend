@@ -1,7 +1,7 @@
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { createPlaylistSchema, updatePlaylistSchema } from '../utils/validation.js';
+import { createPlaylistSchema, updatePlaylistSchema, idParamSchema } from '../utils/schemas.js';
 
 export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     .use(authPlugin)
@@ -26,9 +26,7 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     .post('/', async ({ body, getUserId, db }) => {
         const userId = await getUserId();
 
-        // Validate request body
-        const validatedData = createPlaylistSchema.parse(body);
-        const { name, url, username, password } = validatedData;
+        const { name, url, username, password } = body;
 
         // Get user's plan limits
         const userPlan = await db.getOne(`
@@ -67,15 +65,7 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
 
         return playlist;
     }, {
-        body: t.Object({
-            name: t.String({ minLength: 1, maxLength: 255 }),
-            url: t.String({ format: 'url' }),
-            username: t.String({ minLength: 1 }),
-            password: t.String({ minLength: 1 })
-        }),
-        transform({ body }) {
-            return createPlaylistSchema.parse(body);
-        }
+        body: createPlaylistSchema
     })
 
     // Get playlist details
@@ -95,18 +85,13 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
         // Password is already in plain text
         return playlist;
     }, {
-        params: t.Object({
-            id: t.String()
-        })
+        params: idParamSchema
     })
 
     // Update playlist
     .patch('/:id', async ({ params, body, getUserId, db }) => {
         const userId = await getUserId();
         const playlistId = params.id;
-
-        // Validate request body
-        const validatedData = updatePlaylistSchema.parse(body);
 
         // Verify ownership
         const exists = await db.getOne(
@@ -118,13 +103,8 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
             throw new Error('Playlist not found');
         }
 
-        // Prepare update data
-        const updateData = {};
-        if (validatedData.name !== undefined) updateData.name = validatedData.name;
-        if (validatedData.url !== undefined) updateData.url = validatedData.url;
-        if (validatedData.username !== undefined) updateData.username = validatedData.username;
-        if (validatedData.is_active !== undefined) updateData.is_active = validatedData.is_active;
-        if (validatedData.password !== undefined) updateData.password = validatedData.password;
+        // Use body directly as it's already validated
+        const updateData = body;
 
         const playlist = await db.update('playlists', playlistId, updateData);
 
@@ -133,19 +113,8 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
 
         return playlist;
     }, {
-        params: t.Object({
-            id: t.String()
-        }),
-        body: t.Object({
-            name: t.Optional(t.String({ minLength: 1, maxLength: 255 })),
-            url: t.Optional(t.String({ format: 'url' })),
-            username: t.Optional(t.String({ minLength: 1 })),
-            password: t.Optional(t.String({ minLength: 1 })),
-            is_active: t.Optional(t.Boolean())
-        }),
-        transform({ body }) {
-            return updatePlaylistSchema.parse(body);
-        }
+        params: idParamSchema,
+        body: updatePlaylistSchema
     })
 
     // Delete playlist
@@ -164,7 +133,5 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
 
         return { message: 'Playlist deleted successfully' };
     }, {
-        params: t.Object({
-            id: t.String()
-        })
+        params: idParamSchema
     });
