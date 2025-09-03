@@ -7,7 +7,17 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
     .use(authPlugin)
     .use(databasePlugin)
     .guard({
-        beforeHandle: ({ requireAuth }) => requireAuth()
+        beforeHandle: async ({ getUserId, set }) => {
+            const userId = await getUserId();
+            if (!userId) {
+                set.status = 401;
+                return {
+                    success: false,
+                    message: 'Unauthorized - Invalid or missing authentication token',
+                    data: null
+                };
+            }
+        }
     })
 
     // Get watch progress for current profile
