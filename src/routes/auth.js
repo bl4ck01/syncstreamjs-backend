@@ -131,7 +131,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     })
 
     // Get current user
-    .get('/me', async ({ getUser, set, getUserId }) => {
+    .get('/me', async ({ getUser, set, getUserId, db }) => {
         // Manual auth check
         const userId = await getUserId();
         if (!userId) {
@@ -153,12 +153,55 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             };
         }
 
-        // Remove sensitive data
-        delete user.password_hash;
+        // Get subscription status
+        const subscription = await db.getOne(`
+            SELECT 
+                s.status,
+                s.current_period_end,
+                s.cancel_at_period_end,
+                s.trial_end,
+                p.name as plan_name
+            FROM subscriptions s
+            LEFT JOIN plans p ON s.plan_id = p.id
+            WHERE s.user_id = $1 
+            AND s.status IN ('active', 'trialing', 'canceled', 'past_due')
+            ORDER BY s.created_at DESC
+            LIMIT 1
+        `, [userId]);
+
+        // Build response data
+        const responseData = {
+            id: user.id,
+            email: user.email,
+            full_name: user.full_name,
+            role: user.role,
+            created_at: user.created_at,
+            updated_at: user.updated_at
+        };
+
+        // Add credits_balance only for resellers
+        if (user.role === 'reseller') {
+            responseData.credits_balance = user.credits_balance;
+        }
+
+        // Add subscription info if exists
+        if (subscription) {
+            responseData.subscription_status = subscription.status;
+            responseData.subscription_details = {
+                status: subscription.status,
+                plan_name: subscription.plan_name,
+                current_period_end: subscription.current_period_end,
+                cancel_at_period_end: subscription.cancel_at_period_end,
+                trial_end: subscription.trial_end
+            };
+        } else {
+            responseData.subscription_status = 'none';
+            responseData.subscription_details = null;
+        }
 
         return {
             success: true,
             message: null,
-            data: user
+            data: responseData
         };
     });
