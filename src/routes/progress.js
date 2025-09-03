@@ -46,7 +46,11 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
 
         const progress = await db.getMany(sqlQuery, params);
 
-        return progress;
+        return {
+            success: true,
+            message: null,
+            data: progress
+        };
     }, {
         query: t.Object({
             type: t.Optional(t.Union([
@@ -98,7 +102,11 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
             if (metadata !== undefined) updateData.metadata = metadata;
 
             const progress = await db.update('watch_progress', existing.id, updateData);
-            return progress;
+            return {
+                success: true,
+                message: 'Progress updated successfully',
+                data: progress
+            };
         } else {
             // Create new progress
             const progress = await db.insert('watch_progress', {
@@ -112,7 +120,11 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
                 last_watched: new Date().toISOString()
             });
 
-            return progress;
+            return {
+                success: true,
+                message: 'Progress created successfully',
+                data: progress
+            };
         }
     }, {
         body: updateProgressSchema
@@ -134,13 +146,21 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
 
         if (!progress) {
             return {
-                item_id: itemId,
-                progress_seconds: 0,
-                completed: false
+                success: true,
+                message: null,
+                data: {
+                    item_id: itemId,
+                    progress_seconds: 0,
+                    completed: false
+                }
             };
         }
 
-        return progress;
+        return {
+            success: true,
+            message: null,
+            data: progress
+        };
     }, {
         params: t.Object({
             itemId: t.String()
@@ -165,7 +185,11 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
             throw new Error('Progress not found');
         }
 
-        return { message: 'Progress deleted successfully' };
+        return {
+            success: true,
+            message: 'Progress deleted successfully',
+            data: null
+        };
     }, {
         params: t.Object({
             itemId: t.String()

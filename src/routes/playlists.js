@@ -25,11 +25,15 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
         const userId = await getUserId();
 
         const playlists = await db.getMany(
-            'SELECT id, name, url, username, is_active, created_at FROM playlists WHERE user_id = $1 ORDER BY created_at DESC',
+            'SELECT id, name, url, username, password, is_active, created_at FROM playlists WHERE user_id = $1 ORDER BY created_at DESC',
             [userId]
         );
 
-        return playlists;
+        return {
+            success: true,
+            message: null,
+            data: playlists
+        };
     })
 
     // Create new playlist
@@ -73,7 +77,11 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
         // Don't return encrypted password
         delete playlist.password;
 
-        return playlist;
+        return {
+            success: true,
+            message: 'Playlist created successfully',
+            data: playlist
+        };
     }, {
         body: createPlaylistSchema
     })
@@ -93,7 +101,11 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
         }
 
         // Password is already in plain text
-        return playlist;
+        return {
+            success: true,
+            message: null,
+            data: playlist
+        };
     }, {
         params: idParamSchema
     })
@@ -121,7 +133,11 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
         // Don't return encrypted password
         delete playlist.password;
 
-        return playlist;
+        return {
+            success: true,
+            message: 'Playlist updated successfully',
+            data: playlist
+        };
     }, {
         params: idParamSchema,
         body: updatePlaylistSchema
@@ -141,7 +157,11 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
             throw new Error('Playlist not found');
         }
 
-        return { message: 'Playlist deleted successfully' };
+        return {
+            success: true,
+            message: 'Playlist deleted successfully',
+            data: null
+        };
     }, {
         params: idParamSchema
     });
