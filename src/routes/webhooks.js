@@ -7,9 +7,166 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 export const webhookRoutes = new Elysia({ prefix: '/webhooks' })
     .use(databasePlugin)
 
+    // Test endpoint to verify webhook connectivity
+    .get('/test', () => {
+        return {
+            success: true,
+            message: 'Webhook endpoint is accessible',
+            timestamp: new Date().toISOString(),
+            data: {
+                endpoint: '/api/v1/webhooks/stripe',
+                method: 'POST',
+                contentType: 'application/json',
+                requiredHeader: 'stripe-signature'
+            }
+        };
+    })
+
+    // Stripe success redirect handler (replaces frontend)
+    .get('/success', async ({ query, db }) => {
+        const sessionId = query.session_id;
+        
+        if (!sessionId) {
+            return {
+                success: false,
+                message: 'Missing session_id parameter',
+                data: null
+            };
+        }
+
+        try {
+            console.log('[WEBHOOK] Retrieving Stripe session:', sessionId);
+            
+            // Retrieve the checkout session from Stripe
+            const session = await stripe.checkout.sessions.retrieve(sessionId);
+            
+            if (!session) {
+                console.error('[WEBHOOK] Session not found in Stripe:', sessionId);
+                return {
+                    success: false,
+                    message: 'Invalid session ID',
+                    data: null
+                };
+            }
+
+            console.log('[WEBHOOK] Session retrieved successfully:', {
+                id: session.id,
+                status: session.status,
+                payment_status: session.payment_status,
+                metadata: session.metadata
+            });
+
+            const userId = session.metadata?.user_id;
+            const subscriptionId = session.subscription;
+
+            if (!userId) {
+                console.error('[WEBHOOK] No user_id in session metadata:', session.metadata);
+                return {
+                    success: false,
+                    message: 'Session missing user information',
+                    data: null
+                };
+            }
+
+            // Get user details
+            const user = await db.getOne(
+                'SELECT email, full_name FROM users WHERE id = $1',
+                [userId]
+            );
+
+            if (!user) {
+                console.error('[WEBHOOK] User not found in database:', userId);
+                return {
+                    success: false,
+                    message: 'User not found',
+                    data: null
+                };
+            }
+
+            // Get plan details
+            const plan = await db.getOne(
+                'SELECT name, price_monthly FROM plans WHERE id = $1',
+                [session.metadata?.plan_id]
+            );
+
+            return {
+                success: true,
+                message: 'Payment successful! Your subscription is now active.',
+                data: {
+                    session_id: sessionId,
+                    subscription_id: subscriptionId,
+                    user: user ? {
+                        email: user.email,
+                        name: user.full_name || 'Unknown User'
+                    } : null,
+                    plan: plan ? {
+                        name: plan.name,
+                        price: plan.price_monthly
+                    } : null,
+                    amount: session.amount_total ? (session.amount_total / 100) : null,
+                    currency: session.currency,
+                    payment_status: session.payment_status,
+                    mode: session.mode,
+                    created_at: new Date(session.created * 1000).toISOString(),
+                    next_steps: [
+                        'Your subscription has been activated',
+                        'You can now access all features included in your plan',
+                        'Check your email for confirmation details',
+                        'Manage your subscription through your account settings'
+                    ]
+                }
+            };
+        } catch (error) {
+            console.error('[WEBHOOK] Error retrieving session:', error.message);
+            return {
+                success: false,
+                message: 'Error retrieving session details',
+                data: null
+            };
+        }
+    }, {
+        query: t.Object({
+            session_id: t.String()
+        })
+    })
+
+    // Stripe cancel redirect handler (replaces frontend)
+    .get('/cancel', async ({ query }) => {
+        const sessionId = query.session_id;
+        
+        return {
+            success: false,
+            message: 'Payment was cancelled',
+            data: {
+                session_id: sessionId,
+                message: 'Your payment was not completed and no charges were made.',
+                next_steps: [
+                    'You can try the checkout process again',
+                    'Check that your payment method is valid',
+                    'Contact support if you continue to have issues',
+                    'Your account remains unchanged'
+                ],
+                support_contact: process.env.SUPPORT_EMAIL || 'support@yourdomain.com'
+            }
+        };
+    }, {
+        query: t.Object({
+            session_id: t.Optional(t.String())
+        })
+    })
+
     // Stripe webhook handler
     .post('/stripe', async ({ request, db, set }) => {
-        console.log('[WEBHOOK] Webhook endpoint called');
+        console.log('[WEBHOOK] ==========================================');
+        console.log('[WEBHOOK] Webhook endpoint called at:', new Date().toISOString());
+        console.log('[WEBHOOK] Method:', request.method);
+        console.log('[WEBHOOK] URL:', request.url);
+        console.log('[WEBHOOK] Headers:', {
+            'content-type': request.headers.get('content-type'),
+            'stripe-signature': request.headers.get('stripe-signature') ? 'Present' : 'Missing',
+            'content-length': request.headers.get('content-length')
+        });
+        
         const sig = request.headers.get('stripe-signature');
         const body = await request.text();
 
@@ -135,19 +292,28 @@ async function handleSubscriptionUpdate(db, subscription, event) {
             planId,
             subscription.id
         ]);
-    } else {
-        // Create new subscription record
-        await db.insert('subscriptions', {
-            user_id: userId,
-            stripe_subscription_id: subscription.id,
-            stripe_price_id: subscription.items.data[0].price.id,
-            status: subscription.status,
-            current_period_start: new Date(subscription.current_period_start * 1000),
-            current_period_end: new Date(subscription.current_period_end * 1000),
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
-            plan_id: planId
-        });
+            } else {
+            // Create new subscription record
+            console.log(`[WEBHOOK] Creating new subscription record for user ${userId}`);
+            console.log(`[WEBHOOK] Subscription details:`, {
+                stripe_subscription_id: subscription.id,
+                stripe_price_id: subscription.items.data[0].price.id,
+                status: subscription.status,
+                plan_id: planId,
+                trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null
+            });
+            
+            await db.insert('subscriptions', {
+                user_id: userId,
+                stripe_subscription_id: subscription.id,
+                stripe_price_id: subscription.items.data[0].price.id,
+                status: subscription.status,
+                current_period_start: new Date(subscription.current_period_start * 1000),
+                current_period_end: new Date(subscription.current_period_end * 1000),
+                cancel_at_period_end: subscription.cancel_at_period_end,
+                trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+                plan_id: planId
+            });
 
         // Mark trial as used if this is a trial subscription
         if (subscription.trial_end) {

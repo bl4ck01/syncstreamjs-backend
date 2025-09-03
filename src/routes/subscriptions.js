@@ -137,8 +137,8 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         const trialEligible = !user.has_used_trial;
 
         // Use secure, predefined URLs from environment variables
-        const successUrl = process.env.STRIPE_SUCCESS_URL || `${process.env.FRONTEND_URL}/subscription/success`;
-        const cancelUrl = process.env.STRIPE_CANCEL_URL || `${process.env.FRONTEND_URL}/subscription/cancel`;
+        const successUrl = process.env.STRIPE_SUCCESS_URL || `${process.env.API_URL || 'http://localhost:3000'}/api/v1/webhooks/success?session_id={CHECKOUT_SESSION_ID}`;
+        const cancelUrl = process.env.STRIPE_CANCEL_URL || `${process.env.API_URL || 'http://localhost:3000'}/api/v1/webhooks/cancel?session_id={CHECKOUT_SESSION_ID}`;
 
         // Log checkout started
         console.log(`[SUBSCRIPTION] Checkout started for user ${userId}, plan: ${plan.name}`);

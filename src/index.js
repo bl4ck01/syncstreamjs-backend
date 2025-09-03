@@ -87,6 +87,11 @@ const app = new Elysia()
     }
   }))
 
+  // Test page for subscription flow (development only)
+  .get('/test-subscription', () => {
+    return Bun.file('public/test-subscription.html');
+  })
+
   // Global error handler to ensure all errors follow standard format
   .onError(({ code, error, set }) => {
     // Let the errorHandlerPlugin handle most errors

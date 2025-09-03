@@ -19,6 +19,8 @@ const envSchema = z.object({
     // Stripe
     STRIPE_SECRET_KEY: z.string().startsWith('sk_', 'Invalid Stripe secret key format'),
     STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_', 'Invalid Stripe webhook secret format'),
+    STRIPE_SUCCESS_URL: z.string().url().optional(),
+    STRIPE_CANCEL_URL: z.string().url().optional(),
     STRIPE_API_VERSION: z.string().default('2023-10-16'),
 
     // Server
@@ -74,6 +76,9 @@ const envSchema = z.object({
     // Credit System
     DEFAULT_CREDIT_COST_MULTIPLIER: z.string().transform(Number).default('100'),
     RESELLER_COMMISSION_PERCENTAGE: z.string().transform(Number).default('20'),
+
+    // Support configuration
+    SUPPORT_EMAIL: z.string().email().optional(),
 });
 
 // Validate and parse environment variables
