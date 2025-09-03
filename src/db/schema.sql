@@ -60,8 +60,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     is_kids_profile BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, LOWER(name)) -- Ensure profile names are unique per user (case-insensitive)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    -- Note: Case-insensitive profile name uniqueness is enforced via trigger and functional index
 );
 
 -- Playlists table
@@ -159,6 +159,7 @@ CREATE INDEX idx_users_created_at ON users(created_at DESC);
 CREATE INDEX idx_subscriptions_period_end ON subscriptions(current_period_end) WHERE status = 'active';
 CREATE INDEX idx_subscriptions_user_status ON subscriptions(user_id, status);
 CREATE INDEX idx_profiles_user_active ON profiles(user_id) WHERE is_active = true;
+CREATE INDEX idx_profiles_name_case_insensitive ON profiles(user_id, LOWER(name)); -- Case-insensitive profile name uniqueness
 CREATE INDEX idx_playlists_user_active ON playlists(user_id, is_active);
 CREATE INDEX idx_favorites_profile_type ON favorites(profile_id, item_type);
 CREATE INDEX idx_favorites_created_at ON favorites(created_at DESC);
@@ -181,6 +182,24 @@ CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to enforce case-insensitive profile name uniqueness
+CREATE OR REPLACE FUNCTION enforce_profile_name_uniqueness()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Check if a profile with the same name (case-insensitive) already exists for this user
+    IF EXISTS (
+        SELECT 1 FROM profiles 
+        WHERE user_id = NEW.user_id 
+        AND LOWER(name) = LOWER(NEW.name) 
+        AND id != NEW.id
+    ) THEN
+        RAISE EXCEPTION 'Profile name "%" already exists for this user (case-insensitive)', NEW.name;
+    END IF;
+    
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -212,6 +231,12 @@ CREATE TRIGGER update_profiles_updated_at
     BEFORE UPDATE ON profiles
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger to enforce case-insensitive profile name uniqueness
+CREATE TRIGGER enforce_profile_name_uniqueness_trigger
+    BEFORE INSERT OR UPDATE ON profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION enforce_profile_name_uniqueness();
 
 -- Trigger for playlists table
 CREATE TRIGGER update_playlists_updated_at
