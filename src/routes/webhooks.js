@@ -9,6 +9,7 @@ export const webhookRoutes = new Elysia({ prefix: '/webhooks' })
 
     // Stripe webhook handler
     .post('/stripe', async ({ request, db, set }) => {
+        console.log('[WEBHOOK] Webhook endpoint called');
         const sig = request.headers.get('stripe-signature');
         const body = await request.text();
 
@@ -20,22 +21,28 @@ export const webhookRoutes = new Elysia({ prefix: '/webhooks' })
         let event;
 
         try {
+            console.log('[WEBHOOK] Verifying signature...');
             event = stripe.webhooks.constructEvent(
                 body,
                 sig,
                 process.env.STRIPE_WEBHOOK_SECRET
             );
+            console.log('[WEBHOOK] Signature verified successfully');
         } catch (err) {
+            console.error('[WEBHOOK] Signature verification failed:', err.message);
             set.status = 400;
             throw new Error(`Webhook signature verification failed: ${err.message}`);
         }
 
         // Handle the event
         try {
+            console.log(`[WEBHOOK] Processing event: ${event.type}`);
+            
             switch (event.type) {
                 case 'customer.subscription.created':
                 case 'customer.subscription.updated': {
                     const subscription = event.data.object;
+                    console.log(`[WEBHOOK] Subscription event: ${event.type} for subscription: ${subscription.id}`);
                     await handleSubscriptionUpdate(db, subscription, event);
                     break;
                 }
@@ -66,17 +73,19 @@ export const webhookRoutes = new Elysia({ prefix: '/webhooks' })
 
                 case 'checkout.session.completed': {
                     const session = event.data.object;
+                    console.log(`[WEBHOOK] Checkout completed for session: ${session.id}, subscription: ${session.subscription}`);
                     await handleCheckoutCompleted(db, session);
                     break;
                 }
 
                 default:
-                    console.log(`Unhandled event type ${event.type}`);
+                    console.log(`[WEBHOOK] Unhandled event type: ${event.type}`);
             }
 
+            console.log(`[WEBHOOK] Event processed successfully: ${event.type}`);
             return { received: true };
         } catch (error) {
-            console.error('Webhook processing error:', error);
+            console.error('[WEBHOOK] Processing error:', error);
             set.status = 500;
             throw new Error('Webhook processing failed');
         }
@@ -160,10 +169,12 @@ async function handleSubscriptionUpdate(db, subscription, event) {
 
         if (oldSubscription && oldSubscription.stripe_price_id !== subscription.items.data[0].price.id) {
             const oldPlan = await db.getOne('SELECT * FROM plans WHERE id = $1', [oldSubscription.plan_id]);
-            const newPlan = plan;
+            const newPlan = await db.getOne('SELECT * FROM plans WHERE id = $1', [planId]);
 
-            const isUpgrade = (newPlan?.price_monthly || 0) > (oldPlan?.price_monthly || 0);
-            console.log(`[WEBHOOK] Plan ${isUpgrade ? 'upgraded' : 'downgraded'} for subscription: ${subscription.id}`);
+            if (oldPlan && newPlan) {
+                const isUpgrade = (newPlan.price_monthly || 0) > (oldPlan.price_monthly || 0);
+                console.log(`[WEBHOOK] Plan ${isUpgrade ? 'upgraded' : 'downgraded'} for subscription: ${subscription.id}`);
+            }
         } else {
             // Regular update
             console.log(`[WEBHOOK] Subscription updated: ${subscription.id}, status: ${subscription.status}`);
@@ -236,14 +247,25 @@ async function handlePaymentFailed(db, invoice) {
 
 async function handleCheckoutCompleted(db, session) {
     const userId = session.metadata?.user_id;
+    const subscriptionId = session.subscription;
 
-    // Log checkout completed
-    console.log(`[WEBHOOK] Checkout completed: ${session.id}, amount: ${session.amount_total / 100} ${session.currency}`);
+    // Log checkout completed with more details
+    console.log(`[WEBHOOK] Checkout completed: ${session.id}`);
+    console.log(`[WEBHOOK] - User ID: ${userId}`);
+    console.log(`[WEBHOOK] - Subscription ID: ${subscriptionId}`);
+    console.log(`[WEBHOOK] - Amount: ${session.amount_total / 100} ${session.currency}`);
+    console.log(`[WEBHOOK] - Mode: ${session.mode}`);
+    console.log(`[WEBHOOK] - Payment Status: ${session.payment_status}`);
 
     // This is handled by subscription.created/updated events
     // But we can use it for one-time purchases like credits
     if (session.metadata && session.metadata.credit_package_id) {
-        console.log('Credit purchase checkout completed:', session.id);
+        console.log('[WEBHOOK] Credit purchase checkout completed:', session.id);
+    }
+    
+    // If this created a subscription, we should see a customer.subscription.created event next
+    if (subscriptionId) {
+        console.log(`[WEBHOOK] Expecting subscription.created event for: ${subscriptionId}`);
     }
 }
 
