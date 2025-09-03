@@ -7,9 +7,33 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 export const webhookRoutes = new Elysia({ prefix: '/webhooks' })
     .use(databasePlugin)
 
+    // Test endpoint to verify webhook connectivity
+    .get('/test', () => {
+        return {
+            success: true,
+            message: 'Webhook endpoint is accessible',
+            timestamp: new Date().toISOString(),
+            data: {
+                endpoint: '/api/v1/webhooks/stripe',
+                method: 'POST',
+                contentType: 'application/json',
+                requiredHeader: 'stripe-signature'
+            }
+        };
+    })
+
     // Stripe webhook handler
     .post('/stripe', async ({ request, db, set }) => {
-        console.log('[WEBHOOK] Webhook endpoint called');
+        console.log('[WEBHOOK] ==========================================');
+        console.log('[WEBHOOK] Webhook endpoint called at:', new Date().toISOString());
+        console.log('[WEBHOOK] Method:', request.method);
+        console.log('[WEBHOOK] URL:', request.url);
+        console.log('[WEBHOOK] Headers:', {
+            'content-type': request.headers.get('content-type'),
+            'stripe-signature': request.headers.get('stripe-signature') ? 'Present' : 'Missing',
+            'content-length': request.headers.get('content-length')
+        });
+        
         const sig = request.headers.get('stripe-signature');
         const body = await request.text();
 
@@ -135,19 +159,28 @@ async function handleSubscriptionUpdate(db, subscription, event) {
             planId,
             subscription.id
         ]);
-    } else {
-        // Create new subscription record
-        await db.insert('subscriptions', {
-            user_id: userId,
-            stripe_subscription_id: subscription.id,
-            stripe_price_id: subscription.items.data[0].price.id,
-            status: subscription.status,
-            current_period_start: new Date(subscription.current_period_start * 1000),
-            current_period_end: new Date(subscription.current_period_end * 1000),
-            cancel_at_period_end: subscription.cancel_at_period_end,
-            trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
-            plan_id: planId
-        });
+            } else {
+            // Create new subscription record
+            console.log(`[WEBHOOK] Creating new subscription record for user ${userId}`);
+            console.log(`[WEBHOOK] Subscription details:`, {
+                stripe_subscription_id: subscription.id,
+                stripe_price_id: subscription.items.data[0].price.id,
+                status: subscription.status,
+                plan_id: planId,
+                trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null
+            });
+            
+            await db.insert('subscriptions', {
+                user_id: userId,
+                stripe_subscription_id: subscription.id,
+                stripe_price_id: subscription.items.data[0].price.id,
+                status: subscription.status,
+                current_period_start: new Date(subscription.current_period_start * 1000),
+                current_period_end: new Date(subscription.current_period_end * 1000),
+                cancel_at_period_end: subscription.cancel_at_period_end,
+                trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+                plan_id: planId
+            });
 
         // Mark trial as used if this is a trial subscription
         if (subscription.trial_end) {
