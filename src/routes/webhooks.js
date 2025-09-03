@@ -182,7 +182,7 @@ async function handleSubscriptionUpdate(db, subscription, event, logger) {
                 billing_interval: subscription.items.data[0].price.recurring?.interval
             }
         });
-    } else {
+        
         // Check if this is an upgrade/downgrade
         const oldSubscription = await db.getOne(
             'SELECT plan_id, stripe_price_id FROM subscriptions WHERE stripe_subscription_id = $1',

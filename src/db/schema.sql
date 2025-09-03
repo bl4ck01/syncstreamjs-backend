@@ -314,20 +314,6 @@ VALUES (
 )
 ON CONFLICT (email) DO NOTHING;
 
--- Security Events Log Table
-CREATE TABLE IF NOT EXISTS security_events (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_type VARCHAR(100) NOT NULL,
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    email VARCHAR(255),
-    ip_address INET,
-    user_agent TEXT,
-    success BOOLEAN NOT NULL,
-    failure_reason TEXT,
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Subscription Events Log Table  
 CREATE TABLE IF NOT EXISTS subscription_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -345,12 +331,6 @@ CREATE TABLE IF NOT EXISTS subscription_events (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_security_events_user_id ON security_events(user_id);
-CREATE INDEX idx_security_events_email ON security_events(email);
-CREATE INDEX idx_security_events_event_type ON security_events(event_type);
-CREATE INDEX idx_security_events_created_at ON security_events(created_at);
-CREATE INDEX idx_security_events_ip_address ON security_events(ip_address);
-
 CREATE INDEX idx_subscription_events_user_id ON subscription_events(user_id);
 CREATE INDEX idx_subscription_events_subscription_id ON subscription_events(subscription_id);
 CREATE INDEX idx_subscription_events_event_type ON subscription_events(event_type);

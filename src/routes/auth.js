@@ -125,6 +125,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         );
 
         if (!user) {
+            logger.trackFailedLogin(email);
             await logger.logSecurityEvent({
                 event_type: SECURITY_EVENTS.LOGIN_FAILED,
                 email,
@@ -140,6 +141,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         const validPassword = await verifyPassword(password, user.password_hash);
 
         if (!validPassword) {
+            logger.trackFailedLogin(email);
             await logger.logSecurityEvent({
                 event_type: SECURITY_EVENTS.LOGIN_FAILED,
                 user_id: user.id,

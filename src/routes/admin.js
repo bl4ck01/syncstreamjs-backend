@@ -237,98 +237,6 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
                 t.Literal('admin')
             ])
         })
-<<<<<<< Current (Your changes)
-=======
-    })
-
-    // Get security events
-    .get('/logs/security', async ({ query, db, logger }) => {
-        const { 
-            page = 1, 
-            limit = 50, 
-            user_id, 
-            email, 
-            event_type,
-            success,
-            start_date,
-            end_date,
-            ip_address
-        } = query;
-        
-        const offset = (page - 1) * limit;
-        let conditions = [];
-        let params = [];
-        let paramCount = 0;
-
-        if (user_id) {
-            conditions.push(`user_id = $${++paramCount}`);
-            params.push(user_id);
-        }
-        
-        if (email) {
-            conditions.push(`email ILIKE $${++paramCount}`);
-            params.push(`%${email}%`);
-        }
-        
-        if (event_type) {
-            conditions.push(`event_type = $${++paramCount}`);
-            params.push(event_type);
-        }
-        
-        if (success !== undefined) {
-            conditions.push(`success = $${++paramCount}`);
-            params.push(success === 'true');
-        }
-        
-        if (start_date) {
-            conditions.push(`created_at >= $${++paramCount}`);
-            params.push(new Date(start_date));
-        }
-        
-        if (end_date) {
-            conditions.push(`created_at <= $${++paramCount}`);
-            params.push(new Date(end_date));
-        }
-        
-        if (ip_address) {
-            conditions.push(`ip_address = $${++paramCount}`);
-            params.push(ip_address);
-        }
-        
-        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        
-        // Get total count
-        const countResult = await db.getOne(
-            `SELECT COUNT(*) as total FROM security_events ${whereClause}`,
-            params
-        );
-        
-        // Get events
-        params.push(limit);
-        params.push(offset);
-        
-        const events = await db.query(`
-            SELECT 
-                se.*,
-                u.email as user_email,
-                u.full_name as user_name
-            FROM security_events se
-            LEFT JOIN users u ON se.user_id = u.id
-            ${whereClause}
-            ORDER BY se.created_at DESC
-            LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
-        `, params);
-        
-        return {
-            success: true,
-            data: {
-                events: events.rows,
-                total: parseInt(countResult.total),
-                page,
-                limit,
-                total_pages: Math.ceil(countResult.total / limit)
-            }
-        };
     })
 
     // Get subscription events
@@ -419,47 +327,6 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
         };
     })
 
-    // Get security analytics
-    .get('/analytics/security', async ({ query, logger }) => {
-        const { days = 7 } = query;
-        
-        const analytics = await logger.getSecurityAnalytics(days);
-        
-        // Group by event type and calculate success rates
-        const summary = {};
-        analytics.rows.forEach(row => {
-            if (!summary[row.event_type]) {
-                summary[row.event_type] = {
-                    total: 0,
-                    success: 0,
-                    failed: 0
-                };
-            }
-            
-            summary[row.event_type].total += parseInt(row.count);
-            if (row.success) {
-                summary[row.event_type].success += parseInt(row.count);
-            } else {
-                summary[row.event_type].failed += parseInt(row.count);
-            }
-        });
-        
-        // Calculate success rates
-        Object.keys(summary).forEach(eventType => {
-            const s = summary[eventType];
-            s.success_rate = s.total > 0 ? (s.success / s.total * 100).toFixed(2) : 0;
-        });
-        
-        return {
-            success: true,
-            data: {
-                summary,
-                daily_breakdown: analytics.rows,
-                period_days: days
-            }
-        };
-    })
-
     // Get subscription analytics
     .get('/analytics/subscriptions', async ({ query, logger }) => {
         const { days = 7 } = query;
@@ -529,5 +396,4 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
                 total: allEvents.length
             }
         };
->>>>>>> Incoming (Background Agent changes)
     });

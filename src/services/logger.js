@@ -73,6 +73,8 @@ export const SUBSCRIPTION_EVENTS = {
 class Logger {
     constructor(db) {
         this.db = db;
+        // In-memory store for rate limiting (since we're not using DB for security events)
+        this.failedLogins = new Map(); // email -> { count, firstAttempt }
     }
 
     /**
@@ -81,7 +83,7 @@ class Logger {
     extractClientInfo(request) {
         const headers = request.headers;
         return {
-            ip_address: headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
+            ip_address: request.ip || headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
                        headers.get('x-real-ip') || 
                        request.ip || 
                        'unknown',
@@ -90,7 +92,7 @@ class Logger {
     }
 
     /**
-     * Log security event
+     * Log security event (console only - non-blocking)
      */
     async logSecurityEvent({
         event_type,
@@ -101,49 +103,45 @@ class Logger {
         metadata = {},
         request = null
     }) {
-        try {
-            const clientInfo = request ? this.extractClientInfo(request) : {};
-            
-            await this.db.insert('security_events', {
-                event_type,
-                user_id,
-                email,
-                ip_address: clientInfo.ip_address || metadata.ip_address || null,
-                user_agent: clientInfo.user_agent || metadata.user_agent || null,
-                success,
-                failure_reason,
-                metadata: JSON.stringify({
-                    ...metadata,
-                    timestamp: new Date().toISOString(),
-                    environment: process.env.NODE_ENV || 'development'
-                })
-            });
-
-            // Log to console in development
-            if (process.env.NODE_ENV === 'development') {
-                console.log(`[SECURITY] ${event_type}:`, {
+        // Non-blocking console logging
+        setImmediate(() => {
+            try {
+                const clientInfo = request ? this.extractClientInfo(request) : {};
+                const timestamp = new Date().toISOString();
+                
+                const logData = {
+                    timestamp,
+                    event_type,
                     user_id,
                     email,
                     success,
                     failure_reason,
-                    ip: clientInfo.ip_address
-                });
-            }
+                    ip_address: clientInfo.ip_address || metadata.ip_address || null,
+                    user_agent: clientInfo.user_agent || metadata.user_agent || null,
+                    metadata: {
+                        ...metadata,
+                        environment: process.env.NODE_ENV || 'development'
+                    }
+                };
 
-            // Alert on suspicious activities
-            if (event_type === SECURITY_EVENTS.SUSPICIOUS_ACTIVITY || 
-                event_type === SECURITY_EVENTS.LOGIN_BLOCKED) {
+                // Always log security events
+                console.log(`[SECURITY] ${event_type}:`, JSON.stringify(logData, null, 2));
+            } catch (error) {
+                console.error('[SECURITY] Failed to log event:', error);
+            }
+        });
+
+        // Alert on suspicious activities
+        if (event_type === SECURITY_EVENTS.SUSPICIOUS_ACTIVITY || 
+            event_type === SECURITY_EVENTS.LOGIN_BLOCKED) {
+            setImmediate(() => {
                 console.error(`[SECURITY ALERT] ${event_type}:`, {
                     user_id,
                     email,
-                    ip: clientInfo.ip_address,
                     metadata
                 });
                 // TODO: Send alert email to admins
-            }
-        } catch (error) {
-            console.error('Failed to log security event:', error);
-            // Don't throw - logging should not break the application
+            });
         }
     }
 
@@ -213,26 +211,11 @@ class Logger {
     }
 
     /**
-     * Get security events for a user
+     * Get security events for a user (returns empty since we don't store in DB)
      */
     async getUserSecurityEvents(user_id, options = {}) {
-        const { limit = 50, offset = 0, event_type = null } = options;
-        
-        let query = `
-            SELECT * FROM security_events 
-            WHERE user_id = $1
-        `;
-        const params = [user_id];
-        
-        if (event_type) {
-            query += ` AND event_type = $${params.length + 1}`;
-            params.push(event_type);
-        }
-        
-        query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-        params.push(limit, offset);
-        
-        return await this.db.query(query, params);
+        // Return empty result since we're only logging to console
+        return { rows: [] };
     }
 
     /**
@@ -259,75 +242,61 @@ class Logger {
     }
 
     /**
-     * Get recent failed login attempts for rate limiting
+     * Get recent failed login attempts for rate limiting (in-memory)
      */
     async getRecentFailedLogins(email, minutes = 15) {
-        const query = `
-            SELECT COUNT(*) as count
-            FROM security_events
-            WHERE email = $1
-            AND event_type IN ($2, $3)
-            AND success = false
-            AND created_at > NOW() - INTERVAL '${minutes} minutes'
-        `;
+        const now = Date.now();
+        const windowMs = minutes * 60 * 1000;
         
-        const result = await this.db.query(query, [
-            email,
-            SECURITY_EVENTS.LOGIN_FAILED,
-            SECURITY_EVENTS.LOGIN_BLOCKED
-        ]);
+        // Clean up old entries
+        for (const [key, data] of this.failedLogins.entries()) {
+            if (now - data.firstAttempt > windowMs) {
+                this.failedLogins.delete(key);
+            }
+        }
         
-        return parseInt(result.rows[0]?.count || 0);
+        const data = this.failedLogins.get(email);
+        if (!data) return 0;
+        
+        // Check if the window has expired
+        if (now - data.firstAttempt > windowMs) {
+            this.failedLogins.delete(email);
+            return 0;
+        }
+        
+        return data.count;
+    }
+    
+    /**
+     * Track failed login attempt (in-memory)
+     */
+    trackFailedLogin(email) {
+        const now = Date.now();
+        const data = this.failedLogins.get(email);
+        
+        if (data) {
+            data.count++;
+        } else {
+            this.failedLogins.set(email, { count: 1, firstAttempt: now });
+        }
     }
 
     /**
-     * Check for suspicious activity patterns
+     * Check for suspicious activity patterns (simplified - no DB dependency)
      */
     async checkSuspiciousActivity(user_id, ip_address) {
-        // Check for multiple IPs in short time
-        const recentIPs = await this.db.query(`
-            SELECT DISTINCT ip_address
-            FROM security_events
-            WHERE user_id = $1
-            AND created_at > NOW() - INTERVAL '1 hour'
-            AND ip_address IS NOT NULL
-        `, [user_id]);
-
-        if (recentIPs.rows.length > 5) {
-            await this.logSecurityEvent({
-                event_type: SECURITY_EVENTS.SUSPICIOUS_ACTIVITY,
-                user_id,
-                success: false,
-                failure_reason: 'Multiple IP addresses detected',
-                metadata: {
-                    ip_count: recentIPs.rows.length,
-                    current_ip: ip_address,
-                    recent_ips: recentIPs.rows.map(r => r.ip_address)
-                }
-            });
-            return true;
-        }
-
+        // Since we're not storing IPs in DB, we'll just log the check
+        // In production, you might want to use Redis or similar for this
+        console.log(`[SECURITY] Suspicious activity check for user ${user_id} from IP ${ip_address}`);
         return false;
     }
 
     /**
-     * Get analytics data for admin dashboard
+     * Get analytics data for admin dashboard (returns empty since no DB storage)
      */
     async getSecurityAnalytics(days = 7) {
-        const query = `
-            SELECT 
-                event_type,
-                success,
-                COUNT(*) as count,
-                DATE(created_at) as date
-            FROM security_events
-            WHERE created_at > NOW() - INTERVAL '${days} days'
-            GROUP BY event_type, success, DATE(created_at)
-            ORDER BY date DESC, count DESC
-        `;
-        
-        return await this.db.query(query);
+        // Return empty result since we're only logging to console
+        return { rows: [] };
     }
 
     async getSubscriptionAnalytics(days = 7) {
