@@ -2,14 +2,10 @@ import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
 import { adminAddCreditsSchema, createPlanSchema, updatePlanSchema, idParamSchema, searchPaginationSchema } from '../utils/schemas.js';
-import { createLogger } from '../services/logger.js';
 
 export const adminRoutes = new Elysia({ prefix: '/admin' })
     .use(authPlugin)
     .use(databasePlugin)
-    .derive(({ db }) => ({
-        logger: createLogger(db)
-    }))
     .guard({
         beforeHandle: async ({ getUser, set }) => {
             const user = await getUser();
@@ -240,7 +236,7 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
     })
 
     // Get subscription events
-    .get('/logs/subscriptions', async ({ query, db, logger }) => {
+    .get('/logs/subscriptions', async ({ query, db }) => {
         const { 
             page = 1, 
             limit = 50, 
@@ -328,10 +324,11 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
     })
 
     // Get subscription analytics
-    .get('/analytics/subscriptions', async ({ query, logger }) => {
+    .get('/analytics/subscriptions', async ({ query, db }) => {
         const { days = 7 } = query;
         
-        const analytics = await logger.getSubscriptionAnalytics(days);
+        // For now, return empty analytics since we're not storing events in memory
+        const analytics = { rows: [] };
         
         // Calculate revenue and event summaries
         const summary = {
@@ -366,7 +363,7 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
     })
 
     // Get user activity logs
-    .get('/users/:id/activity', async ({ params, query, db, logger }) => {
+    .get('/users/:id/activity', async ({ params, query, db }) => {
         const userId = params.id;
         const { type = 'all', limit = 100 } = query;
         
@@ -374,12 +371,18 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
         let subscriptionEvents = [];
         
         if (type === 'all' || type === 'security') {
-            const security = await logger.getUserSecurityEvents(userId, { limit });
-            securityEvents = security.rows.map(e => ({ ...e, log_type: 'security' }));
+            // Security events are not stored, only logged to console
+            securityEvents = [];
         }
         
         if (type === 'all' || type === 'subscription') {
-            const subscription = await logger.getUserSubscriptionEvents(userId, { limit });
+            // Get subscription events from database
+            const subscription = await db.query(`
+                SELECT * FROM subscription_events 
+                WHERE user_id = $1 
+                ORDER BY created_at DESC 
+                LIMIT $2
+            `, [userId, limit]);
             subscriptionEvents = subscription.rows.map(e => ({ ...e, log_type: 'subscription' }));
         }
         

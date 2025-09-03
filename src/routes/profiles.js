@@ -2,14 +2,10 @@ import { Elysia } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
 import { createProfileSchema, updateProfileSchema, selectProfileSchema, idParamSchema } from '../utils/schemas.js';
-import { createLogger, SECURITY_EVENTS } from '../services/logger.js';
 
 export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .use(authPlugin)
     .use(databasePlugin)
-    .derive(({ db }) => ({
-        logger: createLogger(db)
-    }))
 
     // Get all profiles for user
     .get('/', async ({ getUserId, db, set }) => {
@@ -87,7 +83,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     })
 
     // Select profile (sets current profile in JWT)
-    .post('/:id/select', async ({ params, body, getUserId, db, signToken, logger, request }) => {
+    .post('/:id/select', async ({ params, body, getUserId, db, signToken }) => {
         const userId = await getUserId();
         const profileId = params.id;
 
@@ -104,26 +100,12 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         // Verify PIN if required (plain text comparison)
         if (profile.parental_pin) {
             if (!body.pin) {
-                await logger.logSecurityEvent({
-                    event_type: SECURITY_EVENTS.PROFILE_ACCESS_DENIED,
-                    user_id: userId,
-                    success: false,
-                    failure_reason: 'PIN required but not provided',
-                    metadata: { profile_id: profileId },
-                    request
-                });
+                console.log(`[PROFILE] PIN required but not provided for profile ${profileId}`);
                 throw new Error('PIN required');
             }
 
             if (body.pin !== profile.parental_pin) {
-                await logger.logSecurityEvent({
-                    event_type: SECURITY_EVENTS.PROFILE_PIN_FAILED,
-                    user_id: userId,
-                    success: false,
-                    failure_reason: 'Invalid PIN',
-                    metadata: { profile_id: profileId },
-                    request
-                });
+                console.log(`[PROFILE] Invalid PIN for profile ${profileId}`);
                 throw new Error('Invalid PIN');
             }
         }

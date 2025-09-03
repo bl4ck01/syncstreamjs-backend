@@ -1,18 +1,14 @@
 import { Elysia, t } from 'elysia';
 import { databasePlugin } from '../plugins/database.js';
 import Stripe from 'stripe';
-import { createLogger, SUBSCRIPTION_EVENTS } from '../services/logger.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export const webhookRoutes = new Elysia({ prefix: '/webhooks' })
     .use(databasePlugin)
-    .derive(({ db }) => ({
-        logger: createLogger(db)
-    }))
 
     // Stripe webhook handler
-    .post('/stripe', async ({ request, db, set, logger }) => {
+    .post('/stripe', async ({ request, db, set }) => {
         const sig = request.headers.get('stripe-signature');
         const body = await request.text();
 
@@ -40,37 +36,37 @@ export const webhookRoutes = new Elysia({ prefix: '/webhooks' })
                 case 'customer.subscription.created':
                 case 'customer.subscription.updated': {
                     const subscription = event.data.object;
-                    await handleSubscriptionUpdate(db, subscription, event, logger);
+                    await handleSubscriptionUpdate(db, subscription, event);
                     break;
                 }
 
                 case 'customer.subscription.deleted': {
                     const subscription = event.data.object;
-                    await handleSubscriptionDeleted(db, subscription, event, logger);
+                    await handleSubscriptionDeleted(db, subscription);
                     break;
                 }
 
                 case 'customer.subscription.trial_will_end': {
                     const subscription = event.data.object;
-                    await handleTrialWillEnd(db, subscription, event, logger);
+                    await handleTrialWillEnd(db, subscription);
                     break;
                 }
 
                 case 'invoice.paid': {
                     const invoice = event.data.object;
-                    await handleInvoicePaid(db, invoice, event, logger);
+                    await handleInvoicePaid(db, invoice);
                     break;
                 }
 
                 case 'invoice.payment_failed': {
                     const invoice = event.data.object;
-                    await handlePaymentFailed(db, invoice, event, logger);
+                    await handlePaymentFailed(db, invoice);
                     break;
                 }
 
                 case 'checkout.session.completed': {
                     const session = event.data.object;
-                    await handleCheckoutCompleted(db, session, event, logger);
+                    await handleCheckoutCompleted(db, session);
                     break;
                 }
 
@@ -89,7 +85,7 @@ export const webhookRoutes = new Elysia({ prefix: '/webhooks' })
     });
 
 // Helper functions for webhook handling
-async function handleSubscriptionUpdate(db, subscription, event, logger) {
+async function handleSubscriptionUpdate(db, subscription, event) {
     const userId = subscription.metadata.user_id;
     const planId = subscription.metadata.plan_id;
 
@@ -98,8 +94,8 @@ async function handleSubscriptionUpdate(db, subscription, event, logger) {
         return;
     }
 
-    // Get plan details for logging
-    const plan = planId ? await db.getOne('SELECT * FROM plans WHERE id = $1', [planId]) : null;
+    // Simple logging
+    console.log(`[WEBHOOK] Subscription update: ${subscription.id} for user: ${userId}`);
 
     // Check if subscription exists
     const existing = await db.getOne(
@@ -151,37 +147,10 @@ async function handleSubscriptionUpdate(db, subscription, event, logger) {
                 [userId]
             );
 
-            // Log trial started
-            await logger.logSubscriptionEvent({
-                event_type: SUBSCRIPTION_EVENTS.TRIAL_STARTED,
-                user_id: userId,
-                subscription_id: existing ? existing.id : null,
-                stripe_subscription_id: subscription.id,
-                stripe_event_id: event.id,
-                plan_id: planId,
-                metadata: {
-                    trial_end: subscription.trial_end,
-                    plan_name: plan?.name
-                }
-            });
+            console.log(`[WEBHOOK] Trial started for user: ${userId}`);
         }
 
-        // Log subscription created
-        await logger.logSubscriptionEvent({
-            event_type: SUBSCRIPTION_EVENTS.SUBSCRIPTION_CREATED,
-            user_id: userId,
-            subscription_id: existing ? existing.id : null,
-            stripe_subscription_id: subscription.id,
-            stripe_event_id: event.id,
-            plan_id: planId,
-            amount: subscription.items.data[0].price.unit_amount / 100,
-            currency: subscription.items.data[0].price.currency,
-            metadata: {
-                status: subscription.status,
-                plan_name: plan?.name,
-                billing_interval: subscription.items.data[0].price.recurring?.interval
-            }
-        });
+        console.log(`[WEBHOOK] Subscription created: ${subscription.id}`);
         
         // Check if this is an upgrade/downgrade
         const oldSubscription = await db.getOne(
@@ -193,45 +162,16 @@ async function handleSubscriptionUpdate(db, subscription, event, logger) {
             const oldPlan = await db.getOne('SELECT * FROM plans WHERE id = $1', [oldSubscription.plan_id]);
             const newPlan = plan;
 
-            const eventType = (newPlan?.price_monthly || 0) > (oldPlan?.price_monthly || 0)
-                ? SUBSCRIPTION_EVENTS.SUBSCRIPTION_UPGRADED
-                : SUBSCRIPTION_EVENTS.SUBSCRIPTION_DOWNGRADED;
-
-            await logger.logSubscriptionEvent({
-                event_type: eventType,
-                user_id: userId,
-                subscription_id: existing.id,
-                stripe_subscription_id: subscription.id,
-                stripe_event_id: event.id,
-                plan_id: planId,
-                previous_plan_id: oldSubscription.plan_id,
-                amount: subscription.items.data[0].price.unit_amount / 100,
-                currency: subscription.items.data[0].price.currency,
-                metadata: {
-                    old_plan: oldPlan?.name,
-                    new_plan: newPlan?.name,
-                    status: subscription.status
-                }
-            });
+            const isUpgrade = (newPlan?.price_monthly || 0) > (oldPlan?.price_monthly || 0);
+            console.log(`[WEBHOOK] Plan ${isUpgrade ? 'upgraded' : 'downgraded'} for subscription: ${subscription.id}`);
         } else {
             // Regular update
-            await logger.logSubscriptionEvent({
-                event_type: SUBSCRIPTION_EVENTS.SUBSCRIPTION_UPDATED,
-                user_id: userId,
-                subscription_id: existing.id,
-                stripe_subscription_id: subscription.id,
-                stripe_event_id: event.id,
-                plan_id: planId,
-                metadata: {
-                    status: subscription.status,
-                    cancel_at_period_end: subscription.cancel_at_period_end
-                }
-            });
+            console.log(`[WEBHOOK] Subscription updated: ${subscription.id}, status: ${subscription.status}`);
         }
     }
 }
 
-async function handleSubscriptionDeleted(db, subscription, event, logger) {
+async function handleSubscriptionDeleted(db, subscription) {
     const userId = subscription.metadata.user_id;
 
     // Get subscription record
@@ -247,22 +187,10 @@ async function handleSubscriptionDeleted(db, subscription, event, logger) {
     );
 
     // Log subscription canceled
-    await logger.logSubscriptionEvent({
-        event_type: SUBSCRIPTION_EVENTS.SUBSCRIPTION_CANCELED,
-        user_id: userId,
-        subscription_id: sub?.id,
-        stripe_subscription_id: subscription.id,
-        stripe_event_id: event.id,
-        plan_id: sub?.plan_id,
-        metadata: {
-            reason: subscription.cancellation_details?.reason,
-            feedback: subscription.cancellation_details?.feedback,
-            canceled_at: subscription.canceled_at
-        }
-    });
+    console.log(`[WEBHOOK] Subscription canceled: ${subscription.id}`);
 }
 
-async function handleInvoicePaid(db, invoice, event, logger) {
+async function handleInvoicePaid(db, invoice) {
     // This confirms payment success
     console.log(`Invoice paid: ${invoice.id} for subscription ${invoice.subscription}`);
 
@@ -270,7 +198,7 @@ async function handleInvoicePaid(db, invoice, event, logger) {
 
     // If this is for a credit purchase (check metadata)
     if (invoice.metadata && invoice.metadata.credit_package_id) {
-        await handleCreditPurchase(db, invoice, event, logger);
+        await handleCreditPurchase(db, invoice);
     } else if (invoice.subscription) {
         // Regular subscription payment
         const sub = await db.getOne(
@@ -278,26 +206,11 @@ async function handleInvoicePaid(db, invoice, event, logger) {
             [invoice.subscription]
         );
 
-        await logger.logSubscriptionEvent({
-            event_type: SUBSCRIPTION_EVENTS.PAYMENT_SUCCESS,
-            user_id: userId,
-            subscription_id: sub?.id,
-            stripe_subscription_id: invoice.subscription,
-            stripe_event_id: event.id,
-            plan_id: sub?.plan_id,
-            amount: invoice.amount_paid / 100,
-            currency: invoice.currency,
-            metadata: {
-                invoice_number: invoice.number,
-                billing_reason: invoice.billing_reason,
-                period_start: invoice.period_start,
-                period_end: invoice.period_end
-            }
-        });
+        console.log(`[WEBHOOK] Payment successful for subscription: ${invoice.subscription}, amount: ${invoice.amount_paid / 100} ${invoice.currency}`);
     }
 }
 
-async function handlePaymentFailed(db, invoice, event, logger) {
+async function handlePaymentFailed(db, invoice) {
     const subscriptionId = invoice.subscription;
     const userId = invoice.metadata?.user_id;
 
@@ -315,46 +228,17 @@ async function handlePaymentFailed(db, invoice, event, logger) {
     `, [subscriptionId]);
 
     // Log payment failure
-    await logger.logSubscriptionEvent({
-        event_type: SUBSCRIPTION_EVENTS.PAYMENT_FAILED,
-        user_id: userId || sub?.user_id,
-        subscription_id: sub?.id,
-        stripe_subscription_id: subscriptionId,
-        stripe_event_id: event.id,
-        plan_id: sub?.plan_id,
-        amount: invoice.amount_due / 100,
-        currency: invoice.currency,
-        metadata: {
-            invoice_number: invoice.number,
-            attempt_count: invoice.attempt_count,
-            next_payment_attempt: invoice.next_payment_attempt,
-            error: invoice.last_finalization_error?.message
-        }
-    });
+    console.log(`[WEBHOOK] Payment failed for subscription: ${subscriptionId}, amount: ${invoice.amount_due / 100} ${invoice.currency}`);
 
     // TODO: Send email notification about payment failure
     console.log(`Payment failed for subscription ${subscriptionId}`);
 }
 
-async function handleCheckoutCompleted(db, session, event, logger) {
+async function handleCheckoutCompleted(db, session) {
     const userId = session.metadata?.user_id;
 
     // Log checkout completed
-    await logger.logSubscriptionEvent({
-        event_type: SUBSCRIPTION_EVENTS.CHECKOUT_COMPLETED,
-        user_id: userId,
-        stripe_event_id: event.id,
-        amount: session.amount_total / 100,
-        currency: session.currency,
-        metadata: {
-            session_id: session.id,
-            mode: session.mode,
-            payment_status: session.payment_status,
-            customer_email: session.customer_details?.email,
-            subscription: session.subscription,
-            credit_package_id: session.metadata?.credit_package_id
-        }
-    });
+    console.log(`[WEBHOOK] Checkout completed: ${session.id}, amount: ${session.amount_total / 100} ${session.currency}`);
 
     // This is handled by subscription.created/updated events
     // But we can use it for one-time purchases like credits
@@ -363,7 +247,7 @@ async function handleCheckoutCompleted(db, session, event, logger) {
     }
 }
 
-async function handleTrialWillEnd(db, subscription, event, logger) {
+async function handleTrialWillEnd(db, subscription) {
     const userId = subscription.metadata.user_id;
 
     // Get subscription record
@@ -373,24 +257,13 @@ async function handleTrialWillEnd(db, subscription, event, logger) {
     );
 
     // Log trial ending soon
-    await logger.logSubscriptionEvent({
-        event_type: SUBSCRIPTION_EVENTS.TRIAL_ENDING_SOON,
-        user_id: userId,
-        subscription_id: sub?.id,
-        stripe_subscription_id: subscription.id,
-        stripe_event_id: event.id,
-        plan_id: sub?.plan_id,
-        metadata: {
-            trial_end: subscription.trial_end,
-            days_remaining: 3 // Stripe sends this 3 days before trial end
-        }
-    });
+    console.log(`[WEBHOOK] Trial ending soon for subscription: ${subscription.id}`);
 
     // TODO: Send notification email
     console.log(`Trial ending soon for subscription ${subscription.id}`);
 }
 
-async function handleCreditPurchase(db, invoice, event, logger) {
+async function handleCreditPurchase(db, invoice) {
     const userId = invoice.metadata.user_id;
     const creditAmount = parseInt(invoice.metadata.credit_amount);
 
@@ -431,17 +304,5 @@ async function handleCreditPurchase(db, invoice, event, logger) {
     });
 
     // Log credit purchase
-    await logger.logSubscriptionEvent({
-        event_type: SUBSCRIPTION_EVENTS.CREDITS_PURCHASED,
-        user_id: userId,
-        stripe_event_id: event?.id,
-        amount: invoice.amount_paid / 100,
-        currency: invoice.currency,
-        metadata: {
-            credit_amount: creditAmount,
-            new_balance: newBalance,
-            invoice_id: invoice.id,
-            package_id: invoice.metadata.credit_package_id
-        }
-    });
+    console.log(`[WEBHOOK] Credits purchased: ${creditAmount} credits for user ${userId}, new balance: ${newBalance}`);
 }

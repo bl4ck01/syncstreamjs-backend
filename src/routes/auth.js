@@ -3,27 +3,18 @@ import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
 import { signupSchema, loginSchema } from '../utils/schemas.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
-import { createLogger, SECURITY_EVENTS } from '../services/logger.js';
 
 export const authRoutes = new Elysia({ prefix: '/auth' })
     .use(authPlugin)
     .use(databasePlugin)
-    .derive(({ db }) => ({
-        logger: createLogger(db)
-    }))
 
     // Signup
-    .post('/signup', async ({ body, db, signToken, set, logger, request }) => {
+    .post('/signup', async ({ body, db, signToken, set }) => {
         // Body is already validated by Elysia
         const { email, password, full_name } = body;
 
-        // Log signup attempt
-        await logger.logSecurityEvent({
-            event_type: SECURITY_EVENTS.REGISTER_ATTEMPT,
-            email,
-            success: true,
-            request
-        });
+        // Simple logging
+        console.log(`[AUTH] Signup attempt for ${email}`);
 
         // Check if user exists
         const existingUser = await db.getOne(
@@ -32,13 +23,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         );
 
         if (existingUser) {
-            await logger.logSecurityEvent({
-                event_type: SECURITY_EVENTS.REGISTER_FAILED,
-                email,
-                success: false,
-                failure_reason: 'Email already exists',
-                request
-            });
+            console.log(`[AUTH] Signup failed - Email already exists: ${email}`);
             set.status = 409;
             return { success: false, message: 'User with this email already exists', data: null };
         }
@@ -67,13 +52,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         const token = await signToken(user.id, user.email);
 
         // Log successful registration
-        await logger.logSecurityEvent({
-            event_type: SECURITY_EVENTS.REGISTER_SUCCESS,
-            user_id: user.id,
-            email: user.email,
-            success: true,
-            request
-        });
+        console.log(`[AUTH] User registered successfully: ${user.email}`);
 
         return {
             success: true,
@@ -91,32 +70,11 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     })
 
     // Login
-    .post('/login', async ({ body, db, signToken, set, logger, request }) => {
+    .post('/login', async ({ body, db, signToken, set }) => {
         // Body is already validated by Elysia
         const { email, password } = body;
 
-        // Check for too many failed attempts
-        const failedAttempts = await logger.getRecentFailedLogins(email, 15);
-        if (failedAttempts >= 5) {
-            await logger.logSecurityEvent({
-                event_type: SECURITY_EVENTS.LOGIN_BLOCKED,
-                email,
-                success: false,
-                failure_reason: 'Too many failed attempts',
-                metadata: { failed_attempts: failedAttempts },
-                request
-            });
-            set.status = 429;
-            return { success: false, message: 'Too many failed login attempts. Please try again later.', data: null };
-        }
-
-        // Log login attempt
-        await logger.logSecurityEvent({
-            event_type: SECURITY_EVENTS.LOGIN_ATTEMPT,
-            email,
-            success: true,
-            request
-        });
+        console.log(`[AUTH] Login attempt for ${email}`);
 
         // Get user by email
         const user = await db.getOne(
@@ -125,14 +83,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         );
 
         if (!user) {
-            logger.trackFailedLogin(email);
-            await logger.logSecurityEvent({
-                event_type: SECURITY_EVENTS.LOGIN_FAILED,
-                email,
-                success: false,
-                failure_reason: 'User not found',
-                request
-            });
+            console.log(`[AUTH] Login failed - User not found: ${email}`);
             set.status = 401;
             return { success: false, message: 'Invalid email or password', data: null };
         }
@@ -141,34 +92,15 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         const validPassword = await verifyPassword(password, user.password_hash);
 
         if (!validPassword) {
-            logger.trackFailedLogin(email);
-            await logger.logSecurityEvent({
-                event_type: SECURITY_EVENTS.LOGIN_FAILED,
-                user_id: user.id,
-                email,
-                success: false,
-                failure_reason: 'Invalid password',
-                request
-            });
+            console.log(`[AUTH] Login failed - Invalid password for: ${email}`);
             set.status = 401;
             return { success: false, message: 'Invalid email or password', data: null };
         }
 
-        // Check for suspicious activity
-        const clientInfo = logger.extractClientInfo(request);
-        await logger.checkSuspiciousActivity(user.id, clientInfo.ip_address);
-
         // Sign JWT token
         const token = await signToken(user.id, user.email);
 
-        // Log successful login
-        await logger.logSecurityEvent({
-            event_type: SECURITY_EVENTS.LOGIN_SUCCESS,
-            user_id: user.id,
-            email: user.email,
-            success: true,
-            request
-        });
+        console.log(`[AUTH] Login successful for: ${user.email}`);
 
         return {
             success: true,
@@ -186,16 +118,11 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     })
 
     // Logout
-    .post('/logout', async ({ getUserId, logger, request }) => {
+    .post('/logout', async ({ getUserId }) => {
         const userId = await getUserId();
         
         if (userId) {
-            await logger.logSecurityEvent({
-                event_type: SECURITY_EVENTS.LOGOUT,
-                user_id: userId,
-                success: true,
-                request
-            });
+            console.log(`[AUTH] User logged out: ${userId}`);
         }
         // With token-based auth, logout is handled client-side by removing the token
         return {
@@ -206,17 +133,10 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     })
 
     // Get current user
-    .get('/me', async ({ getUser, set, getUserId, logger, request }) => {
+    .get('/me', async ({ getUser, set, getUserId }) => {
         // Manual auth check
         const userId = await getUserId();
         if (!userId) {
-            await logger.logSecurityEvent({
-                event_type: SECURITY_EVENTS.UNAUTHORIZED_ACCESS,
-                success: false,
-                failure_reason: 'Invalid or missing authentication token',
-                metadata: { endpoint: '/auth/me' },
-                request
-            });
             set.status = 401;
             return {
                 success: false,
