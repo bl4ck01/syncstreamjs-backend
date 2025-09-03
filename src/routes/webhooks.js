@@ -89,6 +89,49 @@ export const webhookRoutes = new Elysia({ prefix: '/webhooks' })
                 [session.metadata?.plan_id]
             );
 
+            // Check if subscription exists in database
+            if (subscriptionId) {
+                const existingSubscription = await db.getOne(
+                    'SELECT id FROM subscriptions WHERE stripe_subscription_id = $1',
+                    [subscriptionId]
+                );
+
+                // If subscription doesn't exist yet (webhook might be delayed), create it
+                if (!existingSubscription) {
+                    console.log('[SUCCESS] Subscription not found in DB, creating it now...');
+                    
+                    try {
+                        // Retrieve subscription details from Stripe
+                        const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+                        
+                        // Create subscription record
+                        await db.insert('subscriptions', {
+                            user_id: userId,
+                            stripe_subscription_id: subscriptionId,
+                            stripe_price_id: stripeSubscription.items.data[0].price.id,
+                            status: stripeSubscription.status,
+                            current_period_start: new Date(stripeSubscription.current_period_start * 1000),
+                            current_period_end: new Date(stripeSubscription.current_period_end * 1000),
+                            cancel_at_period_end: stripeSubscription.cancel_at_period_end,
+                            trial_end: stripeSubscription.trial_end ? new Date(stripeSubscription.trial_end * 1000) : null,
+                            plan_id: session.metadata?.plan_id
+                        });
+                        
+                        console.log('[SUCCESS] Subscription created successfully via fallback');
+                        
+                        // Mark trial as used if applicable
+                        if (stripeSubscription.trial_end) {
+                            await db.query(
+                                'UPDATE users SET has_used_trial = TRUE WHERE id = $1',
+                                [userId]
+                            );
+                        }
+                    } catch (error) {
+                        console.error('[SUCCESS] Error creating subscription via fallback:', error.message);
+                    }
+                }
+            }
+
             return {
                 success: true,
                 message: 'Payment successful! Your subscription is now active.',
@@ -179,7 +222,7 @@ export const webhookRoutes = new Elysia({ prefix: '/webhooks' })
 
         try {
             console.log('[WEBHOOK] Verifying signature...');
-            event = stripe.webhooks.constructEvent(
+            event = await stripe.webhooks.constructEventAsync(
                 body,
                 sig,
                 process.env.STRIPE_WEBHOOK_SECRET
