@@ -1,6 +1,5 @@
 import { Elysia } from 'elysia';
-import { authPlugin } from '../plugins/auth.js';
-import env from '../utils/env.js';
+import { jwt } from '@elysiajs/jwt';
 
 // Store active connections
 const connections = new Map();
@@ -194,10 +193,16 @@ class WatchPartyRoom {
 
 // WebSocket plugin
 export const websocketPlugin = new Elysia({ prefix: '/ws' })
-    .use(authPlugin)
+    .use(
+        jwt({
+            name: 'jwt',
+            secret: process.env.JWT_SECRET || 'fallback-secret-change-in-production',
+            exp: process.env.JWT_EXPIRY || '7d'
+        })
+    )
     .ws('/connect', {
         // Validate connection
-        async beforeHandle({ request, set }) {
+        async beforeHandle({ request, set, jwt }) {
             // Extract auth token from query or headers
             const token = new URL(request.url).searchParams.get('token') ||
                 request.headers.get('authorization')?.replace('Bearer ', '');
@@ -207,19 +212,24 @@ export const websocketPlugin = new Elysia({ prefix: '/ws' })
                 return 'Authentication required';
             }
 
-            // Verify token (would use actual JWT verification)
-            // const user = await verifyToken(token);
-            // if (!user) {
-            //   set.status = 401;
-            //   return 'Invalid token';
-            // }
-
-            return true;
+            try {
+                // Verify JWT token using the same method as auth plugin
+                const payload = await jwt.verify(token);
+                if (!payload?.userId) {
+                    set.status = 401;
+                    return 'Invalid token';
+                }
+                request.data = { userId: payload.userId };
+                return true;
+            } catch (error) {
+                set.status = 401;
+                return 'Invalid token';
+            }
         },
 
         // Handle new connection
-        open(ws) {
-            const userId = ws.data.userId || crypto.randomUUID();
+        open(ws, { request }) {
+            const userId = request.data.userId || crypto.randomUUID();
             const connectionId = crypto.randomUUID();
 
             // Store connection

@@ -20,14 +20,18 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS plans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) NOT NULL,
+    stripe_product_id VARCHAR(255),
     stripe_price_id VARCHAR(255) UNIQUE,
     price_monthly DECIMAL(10,2),
+    billing_interval VARCHAR(50) DEFAULT 'month',
+    billing_interval_count INTEGER DEFAULT 1,
     max_profiles INTEGER DEFAULT 1,
     max_playlists INTEGER DEFAULT 1,
     max_favorites INTEGER DEFAULT 50,
     features JSONB DEFAULT '{}',
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Subscriptions table
@@ -54,6 +58,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     avatar_url VARCHAR(500),
     parental_pin VARCHAR(4),
     is_kids_profile BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -124,7 +129,11 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
     expires_at TIMESTAMP NOT NULL
 );
 
--- Indexes
+-- ============================================
+-- INDEXES FOR PERFORMANCE
+-- ============================================
+
+-- Basic indexes
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
@@ -136,6 +145,154 @@ CREATE INDEX idx_favorites_profile_id ON favorites(profile_id);
 CREATE INDEX idx_watch_progress_profile_id ON watch_progress(profile_id);
 CREATE INDEX idx_credits_transactions_user_id ON credits_transactions(user_id);
 CREATE INDEX idx_idempotency_keys_expires_at ON idempotency_keys(expires_at);
+
+-- Stripe-related indexes
+CREATE INDEX idx_plans_stripe_product_id ON plans(stripe_product_id);
+CREATE INDEX idx_plans_stripe_price_id ON plans(stripe_price_id);
+CREATE INDEX idx_subscriptions_stripe_subscription_id ON subscriptions(stripe_subscription_id);
+CREATE INDEX idx_subscriptions_stripe_price_id ON subscriptions(stripe_price_id);
+
+-- Performance optimization indexes
+CREATE INDEX idx_users_email_lower ON users(LOWER(email));
+CREATE INDEX idx_users_created_at ON users(created_at DESC);
+CREATE INDEX idx_subscriptions_period_end ON subscriptions(current_period_end) WHERE status = 'active';
+CREATE INDEX idx_subscriptions_user_status ON subscriptions(user_id, status);
+CREATE INDEX idx_profiles_user_active ON profiles(user_id) WHERE is_active = true;
+CREATE INDEX idx_playlists_user_active ON playlists(user_id, is_active);
+CREATE INDEX idx_favorites_profile_type ON favorites(profile_id, item_type);
+CREATE INDEX idx_favorites_created_at ON favorites(created_at DESC);
+CREATE INDEX idx_progress_profile_item ON watch_progress(profile_id, item_id);
+CREATE INDEX idx_progress_completed ON watch_progress(profile_id, completed) WHERE completed = false;
+CREATE INDEX idx_credits_user_created ON credits_transactions(user_id, created_at DESC);
+CREATE INDEX idx_credits_type ON credits_transactions(transaction_type);
+
+-- Composite indexes for complex queries
+CREATE INDEX idx_auth_lookup ON users(email, password_hash, role);
+CREATE INDEX idx_subscription_plan_lookup ON subscriptions(user_id, plan_id, status, current_period_end);
+CREATE INDEX idx_profile_selection ON profiles(id, user_id, parental_pin, is_active);
+
+-- ============================================
+-- TRIGGER FUNCTIONS
+-- ============================================
+
+-- Function to automatically update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================
+-- TRIGGERS
+-- ============================================
+
+-- Trigger for plans table
+CREATE TRIGGER update_plans_updated_at
+    BEFORE UPDATE ON plans
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for users table
+CREATE TRIGGER update_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for subscriptions table
+CREATE TRIGGER update_subscriptions_updated_at
+    BEFORE UPDATE ON subscriptions
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for profiles table
+CREATE TRIGGER update_profiles_updated_at
+    BEFORE UPDATE ON profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for playlists table
+CREATE TRIGGER update_playlists_updated_at
+    BEFORE UPDATE ON playlists
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for watch_progress table
+CREATE TRIGGER update_watch_progress_updated_at
+    BEFORE UPDATE ON watch_progress
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- MATERIALIZED VIEWS FOR ANALYTICS
+-- ============================================
+
+-- Daily active users
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_daily_active_users AS
+SELECT 
+    DATE(created_at) as date,
+    COUNT(DISTINCT id) as active_users,
+    COUNT(DISTINCT CASE WHEN role = 'reseller' THEN id END) as active_resellers
+FROM users
+WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY DATE(created_at);
+
+CREATE UNIQUE INDEX ON mv_daily_active_users(date);
+
+-- Monthly recurring revenue
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_monthly_revenue AS
+SELECT 
+    DATE_TRUNC('month', s.created_at) as month,
+    p.name as plan_name,
+    COUNT(s.id) as subscription_count,
+    SUM(p.price_monthly) as total_revenue
+FROM subscriptions s
+JOIN plans p ON s.plan_id = p.id
+WHERE s.status = 'active'
+GROUP BY DATE_TRUNC('month', s.created_at), p.name;
+
+CREATE UNIQUE INDEX ON mv_monthly_revenue(month, plan_name);
+
+-- User statistics
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_user_stats AS
+SELECT 
+    u.id as user_id,
+    u.email,
+    u.role,
+    COUNT(DISTINCT pr.id) as profile_count,
+    COUNT(DISTINCT pl.id) as playlist_count,
+    COUNT(DISTINCT f.id) as favorite_count,
+    s.status as subscription_status,
+    p.name as plan_name
+FROM users u
+LEFT JOIN profiles pr ON pr.user_id = u.id
+LEFT JOIN profiles pl ON pl.user_id = u.id
+LEFT JOIN favorites f ON f.profile_id IN (SELECT id FROM profiles WHERE user_id = u.id)
+LEFT JOIN subscriptions s ON s.user_id = u.id AND s.status = 'active'
+LEFT JOIN plans p ON p.id = s.plan_id
+GROUP BY u.id, u.email, u.role, s.status, p.name;
+
+CREATE UNIQUE INDEX ON mv_user_stats(user_id);
+CREATE INDEX ON mv_user_stats(role);
+CREATE INDEX ON mv_user_stats(subscription_status);
+
+-- ============================================
+-- REFRESH MATERIALIZED VIEWS FUNCTION
+-- ============================================
+
+CREATE OR REPLACE FUNCTION refresh_materialized_views()
+RETURNS void AS $$
+BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_daily_active_users;
+    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_monthly_revenue;
+    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_user_stats;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================
+-- INSERT DEFAULT DATA
+-- ============================================
 
 -- Insert default plans
 INSERT INTO plans (name, stripe_price_id, price_monthly, max_profiles, max_playlists, max_favorites, features)

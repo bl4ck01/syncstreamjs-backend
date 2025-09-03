@@ -135,13 +135,10 @@
                   "    pm.collectionVariables.set(\"userId\", jsonData.data.id);",
                   "});",
                   "",
-                  "// Extract auth token from cookie",
-                  "const cookie = pm.response.headers.get('Set-Cookie');",
-                  "if (cookie) {",
-                  "    const authMatch = cookie.match(/auth=([^;]+)/);",
-                  "    if (authMatch) {",
-                  "        pm.collectionVariables.set(\"authToken\", authMatch[1]);",
-                  "    }",
+                  "// Extract auth token from response body",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data && jsonData.data.token) {",
+                  "    pm.collectionVariables.set(\"authToken\", jsonData.data.token);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -183,13 +180,10 @@
                   "    pm.expect(jsonData.success).to.eql(true);",
                   "});",
                   "",
-                  "// Extract auth token from cookie",
-                  "const cookie = pm.response.headers.get('Set-Cookie');",
-                  "if (cookie) {",
-                  "    const authMatch = cookie.match(/auth=([^;]+)/);",
-                  "    if (authMatch) {",
-                  "        pm.collectionVariables.set(\"authToken\", authMatch[1]);",
-                  "    }",
+                  "// Extract auth token from response body",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data && jsonData.data.token) {",
+                  "    pm.collectionVariables.set(\"authToken\", jsonData.data.token);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -226,13 +220,10 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "// Extract auth token from cookie",
-                  "const cookie = pm.response.headers.get('Set-Cookie');",
-                  "if (cookie) {",
-                  "    const authMatch = cookie.match(/auth=([^;]+)/);",
-                  "    if (authMatch) {",
-                  "        pm.collectionVariables.set(\"adminToken\", authMatch[1]);",
-                  "    }",
+                  "// Extract auth token from response body",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data && jsonData.data.token) {",
+                  "    pm.collectionVariables.set(\"adminToken\", jsonData.data.token);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -264,8 +255,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -281,8 +272,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -303,8 +294,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -339,8 +330,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               },
               {
                 "key": "Content-Type",
@@ -366,12 +357,9 @@
               "script": {
                 "exec": [
                   "// Update auth token with new profile context",
-                  "const cookie = pm.response.headers.get('Set-Cookie');",
-                  "if (cookie) {",
-                  "    const authMatch = cookie.match(/auth=([^;]+)/);",
-                  "    if (authMatch) {",
-                  "        pm.collectionVariables.set(\"authToken\", authMatch[1]);",
-                  "    }",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data && jsonData.data.token) {",
+                  "    pm.collectionVariables.set(\"authToken\", jsonData.data.token);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -382,8 +370,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               },
               {
                 "key": "Content-Type",
@@ -407,8 +395,8 @@
             "method": "PATCH",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               },
               {
                 "key": "Content-Type",
@@ -432,8 +420,8 @@
             "method": "DELETE",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -454,8 +442,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -490,8 +478,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               },
               {
                 "key": "Content-Type",
@@ -515,8 +503,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -532,8 +520,8 @@
             "method": "PATCH",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               },
               {
                 "key": "Content-Type",
@@ -557,8 +545,8 @@
             "method": "DELETE",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -579,8 +567,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -596,8 +584,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               },
               {
                 "key": "Content-Type",
@@ -621,8 +609,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -638,8 +626,8 @@
             "method": "DELETE",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -660,8 +648,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -677,8 +665,8 @@
             "method": "PUT",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               },
               {
                 "key": "Content-Type",
@@ -702,8 +690,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -719,8 +707,8 @@
             "method": "DELETE",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -741,8 +729,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -758,8 +746,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -769,14 +757,14 @@
             }
           }
         },
-        {
+                {
           "name": "Create Checkout Session",
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               },
               {
                 "key": "Content-Type",
@@ -785,7 +773,12 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"price_id\": \"price_basic_monthly\",\n    \"success_url\": \"http://localhost:3001/success\",\n    \"cancel_url\": \"http://localhost:3001/cancel\"\n}"
+              "raw": "{\n    \"plan_id\": \"Basic\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/subscriptions/checkout",
@@ -800,8 +793,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               },
               {
                 "key": "Content-Type",
@@ -810,7 +803,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"new_price_id\": \"price_premium_monthly\"\n}"
+              "raw": "{\n    \"new_plan_id\": \"Premium\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/subscriptions/change-plan",
@@ -825,8 +818,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -842,8 +835,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -859,8 +852,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{authToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
               }
             ],
             "url": {
@@ -881,8 +874,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -908,8 +901,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -925,8 +918,8 @@
             "method": "PATCH",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               },
               {
                 "key": "Content-Type",
@@ -950,8 +943,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -967,8 +960,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -1003,8 +996,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               },
               {
                 "key": "Content-Type",
@@ -1028,8 +1021,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               },
               {
                 "key": "Content-Type",
@@ -1058,8 +1051,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{resellerToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{resellerToken}}"
               }
             ],
             "url": {
@@ -1075,8 +1068,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{resellerToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{resellerToken}}"
               }
             ],
             "url": {
@@ -1121,8 +1114,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{resellerToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{resellerToken}}"
               },
               {
                 "key": "Content-Type",
@@ -1151,8 +1144,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{resellerToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{resellerToken}}"
               }
             ],
             "url": {
@@ -1178,8 +1171,8 @@
             "method": "PATCH",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               },
               {
                 "key": "Content-Type",
@@ -1208,8 +1201,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -1239,8 +1232,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -1270,8 +1263,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -1287,8 +1280,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -1304,8 +1297,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -1321,8 +1314,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "Cookie",
-                "value": "auth={{adminToken}}"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {

@@ -9,13 +9,19 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
     .use(authPlugin)
     .use(databasePlugin)
-    .guard({
-        beforeHandle: ({ requireAuth }) => requireAuth()
-    })
 
     // Get current subscription
-    .get('/current', async ({ getUserId, db }) => {
+    .get('/current', async ({ getUserId, db, set }) => {
         const userId = await getUserId();
+
+        if (!userId) {
+            set.status = 401;
+            return {
+                success: false,
+                message: 'Unauthorized - Invalid or missing authentication token',
+                data: null
+            };
+        }
 
         const subscription = await db.getOne(`
             SELECT 
@@ -33,7 +39,11 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             LIMIT 1
         `, [userId]);
 
-        return subscription;
+        return {
+            success: true,
+            message: null,
+            data: subscription
+        };
     })
 
     // Get available plans
@@ -43,25 +53,76 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             []
         );
 
-        return plans;
+        return {
+            success: true,
+            message: null,
+            data: plans
+        };
     })
 
     // Create checkout session for new subscription or upgrade
-    .post('/checkout', async ({ body, getUserId, getUser, db }) => {
+    .post('/checkout', async ({ body, getUserId, getUser, db, set }) => {
         const userId = await getUserId();
+
+        if (!userId) {
+            set.status = 401;
+            return {
+                success: false,
+                message: 'Unauthorized - Invalid or missing authentication token',
+                data: null
+            };
+        }
+
         const user = await getUser();
 
-        // Validate request
-        const { price_id, success_url, cancel_url } = createCheckoutSchema.parse(body);
+        if (!user) {
+            set.status = 401;
+            return {
+                success: false,
+                message: 'Unauthorized - User not found',
+                data: null
+            };
+        }
 
-        // Get the plan for the price_id
-        const plan = await db.getOne(
-            'SELECT * FROM plans WHERE stripe_price_id = $1 AND is_active = TRUE',
-            [price_id]
-        );
+        // Validate request - only accept plan identifier
+        const { plan_id } = body;
+
+        if (!plan_id) {
+            set.status = 400;
+            return {
+                success: false,
+                message: 'plan_id is required',
+                data: null
+            };
+        }
+
+        // Get the plan by ID or name
+        let plan;
+        
+        // Check if plan_id is a UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        
+        if (uuidRegex.test(plan_id)) {
+            // If it's a UUID, search by ID
+            plan = await db.getOne(
+                'SELECT * FROM plans WHERE id = $1 AND is_active = TRUE',
+                [plan_id]
+            );
+        } else {
+            // If it's not a UUID, search by name
+            plan = await db.getOne(
+                'SELECT * FROM plans WHERE name ILIKE $1 AND is_active = TRUE',
+                [plan_id]
+            );
+        }
 
         if (!plan) {
-            throw new Error('Invalid plan selected');
+            set.status = 400;
+            return {
+                success: false,
+                message: `Plan not found: ${plan_id}. Please provide a valid plan name.`,
+                data: null
+            };
         }
 
         // Check if user already has an active subscription
@@ -71,7 +132,12 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         );
 
         if (existingSubscription) {
-            throw new Error('You already have an active subscription. Please use the change plan endpoint.');
+            set.status = 400;
+            return {
+                success: false,
+                message: 'You already have an active subscription. Please use the change plan endpoint.',
+                data: null
+            };
         }
 
         // Create or get Stripe customer
@@ -97,18 +163,22 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         // Determine if user is eligible for trial
         const trialEligible = !user.has_used_trial;
 
+        // Use secure, predefined URLs from environment variables
+        const successUrl = process.env.STRIPE_SUCCESS_URL || `${process.env.FRONTEND_URL}/subscription/success`;
+        const cancelUrl = process.env.STRIPE_CANCEL_URL || `${process.env.FRONTEND_URL}/subscription/cancel`;
+
         // Create Stripe checkout session
         const session = await stripe.checkout.sessions.create({
             customer: stripeCustomerId,
             line_items: [
                 {
-                    price: price_id,
+                    price: plan.stripe_price_id,
                     quantity: 1
                 }
             ],
             mode: 'subscription',
-            success_url,
-            cancel_url,
+            success_url: successUrl,
+            cancel_url: cancelUrl,
             subscription_data: trialEligible ? {
                 trial_period_days: 7,
                 metadata: {
@@ -128,27 +198,54 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         });
 
         return {
-            checkout_url: session.url,
-            session_id: session.id
+            success: true,
+            message: 'Checkout session created successfully',
+            data: {
+                checkout_url: session.url,
+                session_id: session.id
+            }
         };
-    }, {
+            }, {
         body: t.Object({
-            price_id: t.String(),
-            success_url: t.String({ format: 'url' }),
-            cancel_url: t.String({ format: 'url' })
-        }),
-        transform({ body }) {
-            return createCheckoutSchema.parse(body);
-        }
+            plan_id: t.String()
+        })
     })
 
     // Change subscription plan
-    .post('/change-plan', async ({ body, getUserId, getUser, db }) => {
+    .post('/change-plan', async ({ body, getUserId, getUser, db, set }) => {
         const userId = await getUserId();
+
+        if (!userId) {
+            set.status = 401;
+            return {
+                success: false,
+                message: 'Unauthorized - Invalid or missing authentication token',
+                data: null
+            };
+        }
+
         const user = await getUser();
 
-        // Validate request
-        const { new_price_id } = changePlanSchema.parse(body);
+        if (!user) {
+            set.status = 401;
+            return {
+                success: false,
+                message: 'Unauthorized - User not found',
+                data: null
+            };
+        }
+
+        // Body is already validated by Elysia
+        const { new_plan_id } = body;
+
+        if (!new_plan_id) {
+            set.status = 400;
+            return {
+                success: false,
+                message: 'new_plan_id is required',
+                data: null
+            };
+        }
 
         // Get current subscription
         const currentSubscription = await db.getOne(
@@ -157,17 +254,41 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         );
 
         if (!currentSubscription || !currentSubscription.stripe_subscription_id) {
-            throw new Error('No active subscription found');
+            set.status = 400;
+            return {
+                success: false,
+                message: 'No active subscription found',
+                data: null
+            };
         }
 
-        // Get the new plan
-        const newPlan = await db.getOne(
-            'SELECT * FROM plans WHERE stripe_price_id = $1 AND is_active = TRUE',
-            [new_price_id]
-        );
+        // Get the new plan by ID, name
+        let newPlan;
+        
+        // Check if new_plan_id is a UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        
+        if (uuidRegex.test(new_plan_id)) {
+            // If it's a UUID, search by ID
+            newPlan = await db.getOne(
+                'SELECT * FROM plans WHERE id = $1 AND is_active = TRUE',
+                [new_plan_id]
+            );
+        } else {
+            // If it's not a UUID, search by name
+            newPlan = await db.getOne(
+                'SELECT * FROM plans WHERE name ILIKE $1 AND is_active = TRUE',
+                [new_plan_id]
+            );
+        }
 
         if (!newPlan) {
-            throw new Error('Invalid plan selected');
+            set.status = 400;
+            return {
+                success: false,
+                message: `Plan not found: ${new_plan_id}. Please provide a valid plan name.`,
+                data: null
+            };
         }
 
         // Get the Stripe subscription
@@ -194,17 +315,17 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         // Note: The actual database update will happen via webhook
 
         return {
+            success: true,
             message: 'Plan change initiated',
-            new_plan: newPlan.name,
-            effective_date: new Date(updatedSubscription.current_period_end * 1000).toISOString()
+            data: {
+                new_plan: newPlan.name,
+                effective_date: new Date(updatedSubscription.current_period_end * 1000).toISOString()
+            }
         };
     }, {
         body: t.Object({
-            new_price_id: t.String()
-        }),
-        transform({ body }) {
-            return changePlanSchema.parse(body);
-        }
+            new_plan_id: t.String()
+        })
     })
 
     // Cancel subscription
