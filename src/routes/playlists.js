@@ -47,7 +47,7 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
       SELECT 
         COALESCE(p.max_playlists, 1) as max_playlists
       FROM users u
-      LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status = 'active'
+      LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
       LEFT JOIN plans p ON s.plan_id = p.id
       WHERE u.id = $1
     `, [userId]);

@@ -34,7 +34,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 p.features
             FROM subscriptions s
             JOIN plans p ON s.plan_id = p.id
-            WHERE s.user_id = $1 AND s.status = 'active'
+            WHERE s.user_id = $1 AND s.status IN ('active', 'trialing')
             ORDER BY s.created_at DESC
             LIMIT 1
         `, [userId]);
@@ -98,9 +98,9 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             };
         }
 
-        // Check if user already has an active subscription
+        // Check if user already has an active or trialing subscription
         const existingSubscription = await db.getOne(
-            'SELECT * FROM subscriptions WHERE user_id = $1 AND status = \'active\'',
+            'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\')',
             [userId]
         );
 
@@ -208,7 +208,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
 
         // Get current subscription
         const currentSubscription = await db.getOne(
-            'SELECT * FROM subscriptions WHERE user_id = $1 AND status = \'active\'',
+            'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\')',
             [userId]
         );
 
@@ -295,7 +295,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
 
         // Get current subscription
         const subscription = await db.getOne(
-            'SELECT * FROM subscriptions WHERE user_id = $1 AND status = \'active\'',
+            'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\')',
             [userId]
         );
 
@@ -349,7 +349,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
 
         // Get current subscription
         const subscription = await db.getOne(
-            'SELECT * FROM subscriptions WHERE user_id = $1 AND status = \'active\' AND cancel_at_period_end = TRUE',
+            'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\') AND cancel_at_period_end = TRUE',
             [userId]
         );
 

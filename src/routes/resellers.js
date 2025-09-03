@@ -34,9 +34,9 @@ export const resellerRoutes = new Elysia({ prefix: '/reseller' })
         const clientStats = await db.getOne(`
             SELECT 
                 COUNT(*) as total_clients,
-                COUNT(CASE WHEN s.status = 'active' THEN 1 END) as active_clients
+                COUNT(CASE WHEN s.status IN ('active', 'trialing') THEN 1 END) as active_clients
             FROM users u
-            LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status = 'active'
+            LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
             WHERE u.parent_reseller_id = $1
         `, [resellerId]);
         
@@ -74,7 +74,7 @@ export const resellerRoutes = new Elysia({ prefix: '/reseller' })
                 s.status as subscription_status,
                 p.name as plan_name
             FROM users u
-            LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status = 'active'
+            LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
             LEFT JOIN plans p ON s.plan_id = p.id
             WHERE u.parent_reseller_id = $1
             ORDER BY u.created_at DESC
