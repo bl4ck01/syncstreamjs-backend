@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { updateProgressSchema } from '../utils/validation.js';
+import { updateProgressSchema } from '../utils/schemas.js';
 
 export const progressRoutes = new Elysia({ prefix: '/progress' })
     .use(authPlugin)
@@ -52,8 +52,7 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
         const profileId = await getCurrentProfileId();
         const userId = await getUserId();
 
-        // Validate request body
-        const validatedData = updateProgressSchema.parse(body);
+        const validatedData = body;
 
         if (!profileId) {
             throw new Error('No profile selected. Please select a profile first.');
@@ -106,20 +105,7 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
             return progress;
         }
     }, {
-        body: t.Object({
-            item_id: t.String({ minLength: 1 }),
-            item_type: t.Union([
-                t.Literal('movie'),
-                t.Literal('episode')
-            ]),
-            progress_seconds: t.Number({ minimum: 0 }),
-            duration_seconds: t.Optional(t.Number({ minimum: 0 })),
-            completed: t.Optional(t.Boolean()),
-            metadata: t.Optional(t.Object({}))
-        }),
-        transform({ body }) {
-            return updateProgressSchema.parse(body);
-        }
+        body: updateProgressSchema
     })
 
     // Get progress for specific item

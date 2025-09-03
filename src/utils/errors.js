@@ -29,12 +29,6 @@ export class AuthorizationError extends AppError {
     }
 }
 
-export class NotFoundError extends AppError {
-    constructor(resource = 'Resource') {
-        super(`${resource} not found`, 404, 'NOT_FOUND');
-    }
-}
-
 export class ConflictError extends AppError {
     constructor(message) {
         super(message, 409, 'CONFLICT_ERROR');
@@ -44,12 +38,6 @@ export class ConflictError extends AppError {
 export class RateLimitError extends AppError {
     constructor(message = 'Too many requests') {
         super(message, 429, 'RATE_LIMIT_ERROR');
-    }
-}
-
-export class PaymentError extends AppError {
-    constructor(message = 'Payment required', details = null) {
-        super(message, 402, 'PAYMENT_ERROR', details);
     }
 }
 
@@ -66,51 +54,6 @@ export class StripeError extends AppError {
         this.stripeError = stripeError;
     }
 }
-
-export class ExternalServiceError extends AppError {
-    constructor(service, message = 'External service error', originalError = null) {
-        super(`${service}: ${message}`, 503, 'EXTERNAL_SERVICE_ERROR');
-        this.service = service;
-        this.originalError = originalError;
-    }
-}
-
-// Error handler utility
-export const handleError = (error, context = '') => {
-    // Log error with context
-    console.error(`[${new Date().toISOString()}] Error in ${context}:`, {
-        message: error.message,
-        code: error.code,
-        stack: error.stack,
-        details: error.details
-    });
-
-    // Send to monitoring service in production
-    if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
-        // Sentry integration would go here
-    }
-
-    // Return appropriate error response
-    if (error.isOperational) {
-        return {
-            success: false,
-            error: {
-                message: error.message,
-                code: error.code,
-                details: error.details
-            }
-        };
-    }
-
-    // For non-operational errors, return generic message
-    return {
-        success: false,
-        error: {
-            message: 'An unexpected error occurred',
-            code: 'INTERNAL_ERROR'
-        }
-    };
-};
 
 // Database error handler
 export const handleDatabaseError = (error) => {
@@ -150,3 +93,57 @@ export const handleStripeError = (error) => {
 
     throw new StripeError(message, error);
 };
+
+
+// Helper function to parse validation errors
+export function parseValidationError(error) {
+    if (error.valueError) {
+        const field = error.valueError.path?.replace('/', '') || 'field';
+        const errorMessage = error.valueError.message || 'is invalid';
+
+        if (errorMessage.includes('Expected string')) {
+            return `${field} is required`;
+        } else if (errorMessage.includes('Expected email')) {
+            return `${field} must be a valid email address`;
+        } else if (errorMessage.includes('Expected URL')) {
+            return `${field} must be a valid URL`;
+        } else if (errorMessage.includes('Expected regex')) {
+            return `${field} format is invalid`;
+        } else if (errorMessage.includes('Expected minimum')) {
+            const match = errorMessage.match(/Expected minimum (\d+)/);
+            if (match) {
+                return `${field} must be at least ${match[1]} characters`;
+            }
+        }
+        return `${field} ${errorMessage.toLowerCase()}`;
+    }
+
+    if (error.all && Array.isArray(error.all)) {
+        const errors = error.all.map(err => {
+            if (err.path && err.path.length > 0) {
+                const field = err.path[err.path.length - 1];
+                if (err.code === 'invalid_type' && err.received === 'undefined') {
+                    return `${field} is required`;
+                } else if (err.code === 'invalid_string' && err.validation === 'email') {
+                    return `${field} must be a valid email address`;
+                } else if (err.code === 'too_small' && err.type === 'string') {
+                    return `${field} must be at least ${err.minimum} characters`;
+                } else if (err.code === 'invalid_string' && err.validation === 'url') {
+                    return `${field} must be a valid URL`;
+                } else if (err.code === 'invalid_string' && err.validation === 'regex') {
+                    return `${field} format is invalid`;
+                }
+                return `${field} is invalid`;
+            }
+            return 'Field is invalid';
+        });
+
+        if (errors.length === 1) {
+            return errors[0];
+        } else if (errors.length > 1) {
+            return `Multiple validation errors: ${errors.join(', ')}`;
+        }
+    }
+
+    return 'Validation error';
+}

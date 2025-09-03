@@ -1,8 +1,7 @@
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { ConflictError, AuthenticationError, AuthorizationError } from '../utils/errors.js';
-import { signupSchema, loginSchema } from '../utils/validation.js';
+import { signupSchema, loginSchema } from '../utils/schemas.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 
 export const authRoutes = new Elysia({ prefix: '/auth' })
@@ -60,11 +59,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             }
         };
     }, {
-        body: t.Object({
-            email: t.String({ format: 'email' }),
-            password: t.String({ minLength: 8 }),
-            full_name: t.Optional(t.String())
-        })
+        body: signupSchema
     })
 
     // Login
@@ -106,10 +101,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             }
         };
     }, {
-        body: t.Object({
-            email: t.String({ format: 'email' }),
-            password: t.String()
-        })
+        body: loginSchema
     })
 
     // Logout
