@@ -308,7 +308,7 @@ ON CONFLICT (stripe_price_id) DO NOTHING;
 INSERT INTO users (email, password_hash, full_name, role)
 VALUES (
     'admin@syncstream.tv',
-    '$2b$12$hSChE5UEwkyj.QyedkKSKODvHLK5cfiCPKXX24C4VbdHswvKiBLxK',
+    '$2b$10$CRO86EoArr4y2wX1LeMmJO17lJT/xOf73iBVpMpYV5d1FGcSU9oH6',
     'System Administrator',
     'admin'
 )

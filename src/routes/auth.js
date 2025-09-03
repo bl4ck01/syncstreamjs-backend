@@ -74,8 +74,6 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         // Body is already validated by Elysia
         const { email, password } = body;
 
-        console.log(`[AUTH] Login attempt for ${email}`);
-
         // Get user by email
         const user = await db.getOne(
             'SELECT * FROM users WHERE email = $1',

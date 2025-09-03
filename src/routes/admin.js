@@ -66,7 +66,7 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
                 s.current_period_end,
                 p.name as plan_name
             FROM users u
-            LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status = 'active'
+            LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
             LEFT JOIN plans p ON s.plan_id = p.id
             WHERE u.id = $1
         `, [userId]);
@@ -192,7 +192,7 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
                 SUM(p.price_monthly) as mrr
             FROM subscriptions s
             JOIN plans p ON s.plan_id = p.id
-            WHERE s.status = 'active' AND p.price_monthly > 0
+            WHERE s.status IN ('active', 'trialing') AND p.price_monthly > 0
         `);
 
         return {
