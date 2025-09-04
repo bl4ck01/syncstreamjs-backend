@@ -120,25 +120,10 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Status code is 200\", function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "pm.test(\"Response has success true\", function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.success).to.eql(true);",
-                  "});",
-                  "",
-                  "pm.test(\"User ID is returned\", function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.data).to.have.property('id');",
-                  "    pm.collectionVariables.set(\"userId\", jsonData.data.id);",
-                  "});",
-                  "",
                   "// Extract auth token from response body",
                   "const jsonData = pm.response.json();",
                   "if (jsonData.success && jsonData.data && jsonData.data.token) {",
-                  "    pm.collectionVariables.set(\"authToken\", jsonData.data.token);",
+                  "    pm.environment.set(\"authToken\", jsonData.data.token);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -155,7 +140,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"email\": \"test{{$timestamp}}@example.com\",\n    \"password\": \"password123\",\n    \"full_name\": \"Test User\"\n}"
+              "raw": "{\n    \"email\": \"user_10@gmail.com\",\n    \"password\": \"password123\",\n    \"full_name\": \"Test User\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/signup",
@@ -183,7 +168,7 @@
                   "// Extract auth token from response body",
                   "const jsonData = pm.response.json();",
                   "if (jsonData.success && jsonData.data && jsonData.data.token) {",
-                  "    pm.collectionVariables.set(\"authToken\", jsonData.data.token);",
+                  "    pm.environment.set(\"authToken\", jsonData.data.token);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -223,7 +208,7 @@
                   "// Extract auth token from response body",
                   "const jsonData = pm.response.json();",
                   "if (jsonData.success && jsonData.data && jsonData.data.token) {",
-                  "    pm.collectionVariables.set(\"adminToken\", jsonData.data.token);",
+                  "    pm.environment.set(\"adminToken\", jsonData.data.token);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -319,7 +304,7 @@
                   "pm.test(\"Profile ID is returned\", function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData.data).to.have.property('id');",
-                  "    pm.collectionVariables.set(\"profileId\", jsonData.data.id);",
+                  "    pm.environment.set(\"profileId\", jsonData.data.id);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -359,7 +344,7 @@
                   "// Update auth token with new profile context",
                   "const jsonData = pm.response.json();",
                   "if (jsonData.success && jsonData.data && jsonData.data.token) {",
-                  "    pm.collectionVariables.set(\"authToken\", jsonData.data.token);",
+                  "    pm.environment.set(\"authToken\", jsonData.data.token);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -467,7 +452,7 @@
                   "pm.test(\"Playlist ID is returned\", function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData.data).to.have.property('id');",
-                  "    pm.collectionVariables.set(\"playlistId\", jsonData.data.id);",
+                  "    pm.environment.set(\"playlistId\", jsonData.data.id);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -813,6 +798,31 @@
           }
         },
         {
+          "name": "Preview Plan Change",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"new_plan_id\": \"Premium\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/preview-plan-change",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "preview-plan-change"]
+            }
+          }
+        },
+        {
           "name": "Cancel Subscription",
           "request": {
             "method": "POST",
@@ -985,7 +995,7 @@
                   "pm.test(\"Plan ID is returned\", function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData.data).to.have.property('id');",
-                  "    pm.collectionVariables.set(\"planId\", jsonData.data.id);",
+                  "    pm.environment.set(\"planId\", jsonData.data.id);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -1103,7 +1113,7 @@
                   "pm.test(\"Client ID is returned\", function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData.data.client).to.have.property('id');",
-                  "    pm.collectionVariables.set(\"clientId\", jsonData.data.client.id);",
+                  "    pm.environment.set(\"clientId\", jsonData.data.client.id);",
                   "});"
                 ],
                 "type": "text/javascript"

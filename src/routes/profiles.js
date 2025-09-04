@@ -1,33 +1,33 @@
-import { Elysia } from 'elysia';
+import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { createProfileSchema, updateProfileSchema, selectProfileSchema, idParamSchema } from '../utils/schemas.js';
 
 export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .use(authPlugin)
     .use(databasePlugin)
-
-    // Get all profiles for user
-    .get('/', async ({ getUserId, db, set }) => {
+    .guard({
+        beforeHandle: async ({ getUserId, set }) => {
+            const userId = await getUserId();
+            if (!userId) {
+                set.status = 401;
+                return {
+                    success: false,
+                    message: 'Unauthorized - Invalid or missing authentication token',
+                    data: null
+                };
+            }
+        }
+    })
+    .get('/', async ({ getUserId, db }) => {
         const userId = await getUserId();
 
-        if (!userId) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - Invalid or missing authentication token',
-                data: null
-            };
-        }
-
-        const profiles = await db.getMany(
-            'SELECT id, name, avatar_url, is_kids_profile, created_at FROM profiles WHERE user_id = $1 ORDER BY created_at',
+        const profiles = await db.getAll(
+            'SELECT id, name, avatar_url, is_kids_profile, created_at FROM profiles WHERE user_id = $1 AND is_active = true ORDER BY created_at',
             [userId]
         );
 
         return {
             success: true,
-            message: null,
             data: profiles
         };
     })
@@ -62,7 +62,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         }
 
         try {
-            // Create profile (PIN stored as plain text)
+            // Create profile with plain text PIN
             const profile = await db.insert('profiles', {
                 user_id: userId,
                 name,
@@ -79,25 +79,30 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
                 message: 'Profile created successfully',
                 data: profile
             };
-        } catch (error) {
-            // Handle unique constraint violation (case-sensitive)
-            if (error.code === '23505') {
-                throw new Error(`A profile with the name "${name}" already exists. Please choose a different name.`);
+        } catch (err) {
+            // Handle duplicate name error from the unique constraint
+            if (err.constraint === 'unique_user_profile_name_case_insensitive') {
+                throw new Error('A profile with this name already exists');
             }
-            throw error;
+            throw err;
         }
     }, {
-        body: createProfileSchema
+        body: t.Object({
+            name: t.String({ minLength: 1, maxLength: 100 }),
+            avatar_url: t.Optional(t.String({ format: 'uri' })),
+            parental_pin: t.Optional(t.String({ pattern: '^\\d{4}$' })),
+            is_kids_profile: t.Optional(t.Boolean())
+        })
     })
 
-    // Select profile (sets current profile in JWT)
+    // Select profile for current session
     .post('/:id/select', async ({ params, body, getUserId, db, signToken }) => {
         const userId = await getUserId();
         const profileId = params.id;
 
-        // Get profile and verify ownership
+        // Verify profile belongs to user
         const profile = await db.getOne(
-            'SELECT * FROM profiles WHERE id = $1 AND user_id = $2',
+            'SELECT * FROM profiles WHERE id = $1 AND user_id = $2 AND is_active = true',
             [profileId, userId]
         );
 
@@ -124,22 +129,23 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         // Issue new JWT with selected profile
         const token = await signToken(userId, user.email, profileId);
 
+        // Remove sensitive data from profile
+        delete profile.parental_pin;
+
+        console.log(`[PROFILE] User ${userId} selected profile ${profileId}`);
+
         return {
             success: true,
             message: 'Profile selected successfully',
-            data: {
-                token,
-                profile: {
-                    id: profile.id,
-                    name: profile.name,
-                    avatar_url: profile.avatar_url,
-                    is_kids_profile: profile.is_kids_profile
-                }
-            }
+            data: { profile, token }
         };
     }, {
-        params: idParamSchema,
-        body: selectProfileSchema
+        params: t.Object({
+            id: t.String({ format: 'uuid' })
+        }),
+        body: t.Object({
+            pin: t.Optional(t.String({ pattern: '^\\d{4}$' }))
+        })
     })
 
     // Update profile
@@ -148,28 +154,30 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         const profileId = params.id;
 
         // Verify ownership
-        const exists = await db.getOne(
+        const existing = await db.getOne(
             'SELECT id FROM profiles WHERE id = $1 AND user_id = $2',
             [profileId, userId]
         );
 
-        if (!exists) {
+        if (!existing) {
             throw new Error('Profile not found');
         }
 
-        // Prepare update data
         const updateData = {};
-        Object.assign(updateData, body);
+        if (body.name !== undefined) updateData.name = body.name;
+        if (body.avatar_url !== undefined) updateData.avatar_url = body.avatar_url;
+        if (body.is_kids_profile !== undefined) updateData.is_kids_profile = body.is_kids_profile;
 
-        // Handle PIN update (plain text)
+        // Handle parental PIN update
         if (body.parental_pin !== undefined) {
             updateData.parental_pin = body.parental_pin || null;
         }
 
-        try {
-            const profile = await db.update('profiles', profileId, updateData);
+        // Manually set updated_at since we removed the trigger
+        updateData.updated_at = new Date();
 
-            // Remove sensitive data
+        try {
+            const profile = await db.update('profiles', updateData, { id: profileId });
             delete profile.parental_pin;
 
             return {
@@ -177,16 +185,23 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
                 message: 'Profile updated successfully',
                 data: profile
             };
-        } catch (error) {
-            // Handle unique constraint violation (case-insensitive)
-            if (error.code === '23505') {
-                throw new Error(`A profile with the name "${body.name}" already exists. Please choose a different name.`);
+        } catch (err) {
+            // Handle duplicate name error from the unique constraint
+            if (err.constraint === 'unique_user_profile_name_case_insensitive') {
+                throw new Error('A profile with this name already exists');
             }
-            throw error;
+            throw err;
         }
     }, {
-        params: idParamSchema,
-        body: updateProfileSchema
+        params: t.Object({
+            id: t.String({ format: 'uuid' })
+        }),
+        body: t.Object({
+            name: t.Optional(t.String({ minLength: 1, maxLength: 100 })),
+            avatar_url: t.Optional(t.String({ format: 'uri' })),
+            parental_pin: t.Optional(t.String({ pattern: '^\\d{4}$' })),
+            is_kids_profile: t.Optional(t.Boolean())
+        })
     })
 
     // Delete profile
@@ -194,21 +209,30 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         const userId = await getUserId();
         const profileId = params.id;
 
-        // Delete profile (cascades to favorites and watch_progress)
-        const result = await db.query(
-            'DELETE FROM profiles WHERE id = $1 AND user_id = $2 RETURNING id',
-            [profileId, userId]
+        // Check ownership and ensure at least one profile remains
+        const profiles = await db.getAll(
+            'SELECT id FROM profiles WHERE user_id = $1 AND is_active = true',
+            [userId]
         );
 
-        if (result.rowCount === 0) {
+        if (profiles.length <= 1) {
+            throw new Error('Cannot delete last profile');
+        }
+
+        const isOwner = profiles.some(p => p.id === profileId);
+        if (!isOwner) {
             throw new Error('Profile not found');
         }
 
+        // Soft delete
+        await db.update('profiles', { is_active: false, updated_at: new Date() }, { id: profileId });
+
         return {
             success: true,
-            message: 'Profile deleted successfully',
-            data: null
+            message: 'Profile deleted successfully'
         };
     }, {
-        params: idParamSchema
+        params: t.Object({
+            id: t.String({ format: 'uuid' })
+        })
     });

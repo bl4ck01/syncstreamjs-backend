@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import env, { isFeatureEnabled } from '../utils/env.js';
+import { isFeatureEnabled } from '../utils/env.js';
 import { AuthorizationError } from '../utils/errors.js';
 
 export const analyticsRoutes = new Elysia({ prefix: '/analytics' })
@@ -54,10 +54,10 @@ export const analyticsRoutes = new Elysia({ prefix: '/analytics' })
             GROUP BY role
         `);
 
-        // Active users (logged in within last 30 days)
+        // Active users (users created in last 30 days)
         const activeUsers = await db.query(`
             SELECT 
-                COUNT(DISTINCT user_id) as daily_active,
+                COUNT(*) as daily_active,
                 DATE_TRUNC('day', created_at) as date
             FROM users
             WHERE created_at >= NOW() - INTERVAL '30 days'
@@ -222,20 +222,18 @@ export const analyticsRoutes = new Elysia({ prefix: '/analytics' })
         const profileStats = await db.query(`
             SELECT 
                 COUNT(*) as total_profiles,
-                COUNT(DISTINCT user_id) as users_with_profiles,
-                COUNT(CASE WHEN is_kids_profile THEN 1 END) as kids_profiles,
-                COUNT(CASE WHEN parental_pin IS NOT NULL THEN 1 END) as protected_profiles,
+                COUNT(DISTINCT p.user_id) as users_with_profiles,
+                COUNT(CASE WHEN p.is_kids_profile THEN 1 END) as kids_profiles,
+                COUNT(CASE WHEN p.parental_pin IS NOT NULL THEN 1 END) as protected_profiles,
                 AVG(profiles_per_user) as avg_profiles_per_user
-            FROM (
+            FROM profiles p
+            LEFT JOIN (
                 SELECT 
                     user_id,
                     COUNT(*) as profiles_per_user
                 FROM profiles
                 GROUP BY user_id
-            ) user_profiles
-            CROSS JOIN LATERAL (
-                SELECT * FROM profiles
-            ) p
+            ) user_profiles ON p.user_id = user_profiles.user_id
         `);
 
         return {

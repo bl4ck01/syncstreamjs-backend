@@ -103,6 +103,7 @@ The API will be available at `http://localhost:3000`
 - `GET /subscriptions/plans` - List available plans
 - `POST /subscriptions/checkout` - Create Stripe checkout session
 - `POST /subscriptions/change-plan` - Change subscription plan
+- `POST /subscriptions/preview-plan-change` - Preview plan change proration before committing
 - `POST /subscriptions/cancel` - Cancel subscription
 - `POST /subscriptions/reactivate` - Reactivate canceled subscription
 - `GET /subscriptions/billing-portal` - Get Stripe billing portal URL
