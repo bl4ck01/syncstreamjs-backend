@@ -1,4 +1,4 @@
-"use client";;
+"use client";
 import { cn } from "@/lib/utils";
 import NumberFlow from "@number-flow/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 
-export default function Pricing_04(PLANS) {
+export default function Pricing_04({ plans = [] }) {
 
     const [billPlan, setBillPlan] = useState("monthly");
 
