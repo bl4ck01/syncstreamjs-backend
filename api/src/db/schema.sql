@@ -22,13 +22,24 @@ CREATE TABLE IF NOT EXISTS plans (
     name VARCHAR(100) NOT NULL,
     stripe_product_id VARCHAR(255),
     stripe_price_id VARCHAR(255) UNIQUE,
+    stripe_price_id_annual VARCHAR(255) UNIQUE,
     price_monthly DECIMAL(10,2),
+    price_annual DECIMAL(10,2),
     billing_interval VARCHAR(50) DEFAULT 'month',
     billing_interval_count INTEGER DEFAULT 1,
     max_profiles INTEGER DEFAULT 1,
     max_playlists INTEGER DEFAULT 1,
     max_favorites INTEGER DEFAULT 50,
-    features JSONB DEFAULT '{}',
+    trial_days INTEGER DEFAULT 3,
+    -- Feature columns
+    cine_party BOOLEAN DEFAULT FALSE,
+    cine_party_voice_chat BOOLEAN DEFAULT FALSE,
+    sync_data_across_devices BOOLEAN DEFAULT TRUE,
+    record_live_tv BOOLEAN DEFAULT FALSE,
+    download_offline_viewing BOOLEAN DEFAULT FALSE,
+    parental_controls BOOLEAN DEFAULT TRUE,
+    multi_screen_viewing INTEGER DEFAULT 1,
+    support_level VARCHAR(50) DEFAULT 'email',
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -153,6 +164,7 @@ CREATE INDEX idx_idempotency_keys_expires_at ON idempotency_keys(expires_at);
 -- Stripe-related indexes
 CREATE INDEX idx_plans_stripe_product_id ON plans(stripe_product_id);
 CREATE INDEX idx_plans_stripe_price_id ON plans(stripe_price_id);
+CREATE INDEX idx_plans_stripe_price_id_annual ON plans(stripe_price_id_annual);
 CREATE INDEX idx_subscriptions_stripe_subscription_id ON subscriptions(stripe_subscription_id);
 CREATE INDEX idx_subscriptions_stripe_price_id ON subscriptions(stripe_price_id);
 
@@ -300,12 +312,29 @@ $$ LANGUAGE plpgsql;
 -- ============================================
 
 -- Insert default plans
-INSERT INTO plans (name, stripe_price_id, price_monthly, max_profiles, max_playlists, max_favorites, features)
+INSERT INTO plans (
+    name, 
+    stripe_price_id, 
+    stripe_price_id_annual,
+    price_monthly, 
+    price_annual,
+    max_profiles, 
+    max_playlists, 
+    max_favorites,
+    trial_days,
+    cine_party,
+    cine_party_voice_chat,
+    sync_data_across_devices,
+    record_live_tv,
+    download_offline_viewing,
+    parental_controls,
+    multi_screen_viewing,
+    support_level
+)
 VALUES 
-    ('Free', NULL, 0, 1, 1, 50, '{"ads": true}'),
-    ('Basic', 'price_basic_monthly', 4.99, 2, 3, 200, '{"ads": false}'),
-    ('Premium', 'price_premium_monthly', 9.99, 5, 10, -1, '{"ads": false, "hd": true}'),
-    ('Family', 'price_family_monthly', 14.99, 8, 20, -1, '{"ads": false, "hd": true, "4k": true}')
+    ('Basic', 'price_basic_monthly', 'price_basic_annual', 4.99, 49.99, 3, 2, -1, 3, false, false, true, false, false, true, 1, 'email'),
+    ('Pro', 'price_pro_monthly', 'price_pro_annual', 9.99, 99.99, 6, 5, -1, 3, true, false, true, true, true, true, 2, 'email_chat'),
+    ('Ultimate', 'price_ultimate_monthly', 'price_ultimate_annual', 14.99, 149.99, -1, -1, -1, 3, true, true, true, true, true, true, 5, 'priority_24_7')
 ON CONFLICT (stripe_price_id) DO NOTHING;
 
 -- Insert default admin user

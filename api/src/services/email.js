@@ -399,11 +399,24 @@ export const notifications = {
     },
 
     async sendSubscriptionConfirmation(user, subscription, plan) {
+        // Convert new feature columns to features array for email template
+        const features = [];
+        if (plan.cine_party) features.push('Cine Party (Watch Party)');
+        if (plan.cine_party_voice_chat) features.push('Cine Party with Voice Chat');
+        if (plan.sync_data_across_devices) features.push('Sync Data Across Devices');
+        if (plan.record_live_tv) features.push('Record Live TV');
+        if (plan.download_offline_viewing) features.push('Download for Offline Viewing');
+        if (plan.parental_controls) features.push('Parental Controls');
+        if (plan.multi_screen_viewing > 1) features.push(`Multi-Screen Viewing (${plan.multi_screen_viewing} screens)`);
+        if (plan.support_level === 'email_chat') features.push('Email & Chat Support');
+        if (plan.support_level === 'priority_24_7') features.push('24/7 Priority Support');
+        else if (plan.support_level === 'email') features.push('Email Support');
+
         return emailService.send(user.email, 'subscriptionConfirmation', {
             name: user.full_name || 'User',
             planName: plan.name,
             price: `$${plan.price_monthly}`,
-            features: plan.features,
+            features: features,
             nextBillingDate: new Date(subscription.current_period_end).toLocaleDateString()
         }, user.language);
     },

@@ -121,6 +121,6 @@ export async function getUser() {
 
 
 export async function getPlans() {
-    const data = await performRequest('/subscriptions/plans');
+    const data = await performRequest('/subscriptions/plans/public');
     return data;
 }

@@ -28,10 +28,19 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 s.*,
                 p.name as plan_name,
                 p.price_monthly,
+                p.price_annual,
                 p.max_profiles,
                 p.max_playlists,
                 p.max_favorites,
-                p.features
+                p.trial_days,
+                p.cine_party,
+                p.cine_party_voice_chat,
+                p.sync_data_across_devices,
+                p.record_live_tv,
+                p.download_offline_viewing,
+                p.parental_controls,
+                p.multi_screen_viewing,
+                p.support_level
             FROM subscriptions s
             JOIN plans p ON s.plan_id = p.id
             WHERE s.user_id = $1 AND s.status IN ('active', 'trialing')
@@ -46,12 +55,44 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         };
     })
 
-    // Get available plans
+    // Get available plans (authenticated)
     .get('/plans', async ({ db }) => {
         const plans = await db.getMany(
             'SELECT * FROM plans WHERE is_active = TRUE ORDER BY price_monthly',
             []
         );
+
+        return {
+            success: true,
+            message: null,
+            data: plans
+        };
+    })
+
+    // Get public plans (no authentication required, no Stripe info)
+    .get('/plans/public', async ({ db }) => {
+        const plans = await db.getMany(`
+            SELECT 
+                id,
+                name,
+                price_monthly,
+                price_annual,
+                max_profiles,
+                max_playlists,
+                max_favorites,
+                trial_days,
+                cine_party,
+                cine_party_voice_chat,
+                sync_data_across_devices,
+                record_live_tv,
+                download_offline_viewing,
+                parental_controls,
+                multi_screen_viewing,
+                support_level
+            FROM plans 
+            WHERE is_active = TRUE 
+            ORDER BY price_monthly
+        `, []);
 
         return {
             success: true,
@@ -156,7 +197,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             success_url: successUrl,
             cancel_url: cancelUrl,
             subscription_data: {
-                ...(trialEligible && { trial_period_days: 7 }),
+                ...(trialEligible && { trial_period_days: 3 }),
                 metadata: {
                     user_id: userId,
                     plan_id: plan.id
@@ -691,7 +732,8 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             SELECT 
                 s.*,
                 p.name as plan_name,
-                p.price_monthly
+                p.price_monthly,
+                p.price_annual
             FROM subscriptions s
             JOIN plans p ON s.plan_id = p.id
             WHERE s.user_id = $1
