@@ -1,6 +1,7 @@
 import React from 'react';
 import Pricing_04 from '@/components/ui/pricing-04';
 import { getPlans } from '@/server/actions';
+import { SparklesCore } from '@/components/ui/sparkles';
 
 export default async function PricingPage() {
   // Fetch plans from the backend
@@ -10,8 +11,23 @@ export default async function PricingPage() {
   const plans = plansResponse?.success && plansResponse?.data ? plansResponse.data : [];
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4">
+    <div className="min-h-screen bg-black relative overflow-hidden">
+      {/* Sparkles background effect */}
+      <div className="absolute inset-0 w-full h-full">
+        <SparklesCore
+          id="tsparticlesfullpage"
+          background="transparent"
+          minSize={0.6}
+          maxSize={1.4}
+          particleDensity={100}
+          className="w-full h-full"
+          particleColor="#e11d48" // rose-600 color
+          speed={1}
+        />
+      </div>
+      
+      {/* Content */}
+      <div className="relative z-10 container mx-auto px-4">
         <Pricing_04 plans={plans} />
       </div>
     </div>
