@@ -407,7 +407,6 @@ export const notifications = {
         if (plan.record_live_tv) features.push('Record Live TV');
         if (plan.download_offline_viewing) features.push('Download for Offline Viewing');
         if (plan.parental_controls) features.push('Parental Controls');
-        if (plan.multi_screen_viewing > 1) features.push(`Multi-Screen Viewing (${plan.multi_screen_viewing} screens)`);
         if (plan.support_level === 'email_chat') features.push('Email & Chat Support');
         if (plan.support_level === 'priority_24_7') features.push('24/7 Priority Support');
         else if (plan.support_level === 'email') features.push('Email Support');

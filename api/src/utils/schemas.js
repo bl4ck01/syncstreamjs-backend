@@ -104,8 +104,6 @@ export const createPlanSchema = t.Object({
     price_monthly: t.Number(),
     price_annual: t.Optional(t.Number()),
     max_profiles: t.Number(),
-    max_playlists: t.Number(),
-    max_favorites: t.Number(),
     trial_days: t.Optional(t.Number()),
     cine_party: t.Optional(t.Boolean()),
     cine_party_voice_chat: t.Optional(t.Boolean()),
@@ -113,7 +111,6 @@ export const createPlanSchema = t.Object({
     record_live_tv: t.Optional(t.Boolean()),
     download_offline_viewing: t.Optional(t.Boolean()),
     parental_controls: t.Optional(t.Boolean()),
-    multi_screen_viewing: t.Optional(t.Number()),
     support_level: t.Optional(t.String()),
     is_active: t.Optional(t.Boolean())
 });
@@ -125,8 +122,6 @@ export const updatePlanSchema = t.Object({
     price_monthly: t.Optional(t.Number()),
     price_annual: t.Optional(t.Number()),
     max_profiles: t.Optional(t.Number()),
-    max_playlists: t.Optional(t.Number()),
-    max_favorites: t.Optional(t.Number()),
     trial_days: t.Optional(t.Number()),
     cine_party: t.Optional(t.Boolean()),
     cine_party_voice_chat: t.Optional(t.Boolean()),
@@ -134,7 +129,6 @@ export const updatePlanSchema = t.Object({
     record_live_tv: t.Optional(t.Boolean()),
     download_offline_viewing: t.Optional(t.Boolean()),
     parental_controls: t.Optional(t.Boolean()),
-    multi_screen_viewing: t.Optional(t.Number()),
     support_level: t.Optional(t.String()),
     is_active: t.Optional(t.Boolean())
 });

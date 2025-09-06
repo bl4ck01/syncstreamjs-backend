@@ -15,7 +15,6 @@ async function testPricingData() {
                 console.log(`   - Monthly: $${plan.price_monthly}`);
                 console.log(`   - Annual: $${plan.price_annual}`);
                 console.log(`   - Profiles: ${plan.max_profiles === -1 ? 'Unlimited' : plan.max_profiles}`);
-                console.log(`   - Playlists: ${plan.max_playlists === -1 ? 'Unlimited' : plan.max_playlists}`);
                 console.log(`   - Trial: ${plan.trial_days} days`);
             });
         } else {

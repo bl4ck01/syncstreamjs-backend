@@ -30,8 +30,6 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 p.price_monthly,
                 p.price_annual,
                 p.max_profiles,
-                p.max_playlists,
-                p.max_favorites,
                 p.trial_days,
                 p.cine_party,
                 p.cine_party_voice_chat,
@@ -39,7 +37,6 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 p.record_live_tv,
                 p.download_offline_viewing,
                 p.parental_controls,
-                p.multi_screen_viewing,
                 p.support_level
             FROM subscriptions s
             JOIN plans p ON s.plan_id = p.id
@@ -78,8 +75,6 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 price_monthly,
                 price_annual,
                 max_profiles,
-                max_playlists,
-                max_favorites,
                 trial_days,
                 cine_party,
                 cine_party_voice_chat,
@@ -87,7 +82,6 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 record_live_tv,
                 download_offline_viewing,
                 parental_controls,
-                multi_screen_viewing,
                 support_level
             FROM plans 
             WHERE is_active = TRUE 
