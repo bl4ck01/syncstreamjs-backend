@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
+import { authMiddleware, userContextMiddleware } from '../middleware/auth.js';
 import { signupSchema, loginSchema } from '../utils/schemas.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 
@@ -109,9 +110,8 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     })
 
     // Logout
-    .post('/logout', async ({ getUserId }) => {
-        const userId = await getUserId();
-        
+    .use(authMiddleware)
+    .post('/logout', async ({ userId }) => {
         if (userId) {
             console.log(`[AUTH] User logged out: ${userId}`);
         }
@@ -123,46 +123,11 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         };
     })
 
-    // Get current user
-    .get('/me', async ({ getUser, set, getUserId, db }) => {
-        // Manual auth check
-        const userId = await getUserId();
-        if (!userId) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - Invalid or missing authentication token',
-                data: null
-            };
-        }
-
-        const user = await getUser();
-        if (!user) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - User not found',
-                data: null
-            };
-        }
-
-        // Get subscription status
-        const subscription = await db.getOne(`
-            SELECT 
-                s.status,
-                s.current_period_end,
-                s.cancel_at_period_end,
-                s.trial_end,
-                p.name as plan_name
-            FROM subscriptions s
-            LEFT JOIN plans p ON s.plan_id = p.id
-            WHERE s.user_id = $1 
-            AND s.status IN ('active', 'trialing', 'canceled', 'past_due')
-            ORDER BY s.created_at DESC
-            LIMIT 1
-        `, [userId]);
-
-        // Build response data
+    // Get current user - OPTIMIZED with single query
+    .use(authMiddleware)
+    .use(userContextMiddleware)
+    .get('/me', async ({ user }) => {
+        // Build response data from pre-fetched user object
         const responseData = {
             id: user.id,
             email: user.email,
@@ -177,15 +142,15 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             responseData.credits_balance = user.credits_balance;
         }
 
-        // Add subscription info if exists
-        if (subscription) {
-            responseData.subscription_status = subscription.status;
+        // Add subscription info if exists (already fetched in middleware)
+        if (user.subscription) {
+            responseData.subscription_status = user.subscription.status;
             responseData.subscription_details = {
-                status: subscription.status,
-                plan_name: subscription.plan_name,
-                current_period_end: subscription.current_period_end,
-                cancel_at_period_end: subscription.cancel_at_period_end,
-                trial_end: subscription.trial_end
+                status: user.subscription.status,
+                plan_name: user.subscription.plan_name,
+                current_period_end: user.subscription.current_period_end,
+                cancel_at_period_end: user.subscription.cancel_at_period_end,
+                trial_end: user.subscription.trial_end
             };
         } else {
             responseData.subscription_status = 'none';

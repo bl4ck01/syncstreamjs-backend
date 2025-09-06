@@ -11,57 +11,56 @@ export const authPlugin = new Elysia({ name: 'auth' })
     })
   )
   .derive({ as: 'global' }, ({ jwt, headers }) => {
+    // Cache the JWT payload to avoid multiple verifications
+    let cachedPayload = null;
+    let cacheChecked = false;
+    
+    const getJWTPayload = async () => {
+      if (cacheChecked) return cachedPayload;
+      
+      const authHeader = headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        cacheChecked = true;
+        return null;
+      }
+
+      const token = authHeader.substring(7);
+
+      try {
+        cachedPayload = await jwt.verify(token);
+        cacheChecked = true;
+        return cachedPayload;
+      } catch {
+        cacheChecked = true;
+        return null;
+      }
+    };
+    
     return {
-      // Get user ID from JWT token
+      // Get user ID from JWT token (optimized with caching)
       getUserId: async () => {
-        const authHeader = headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-
-        const token = authHeader.substring(7);
-
-        try {
-          const payload = await jwt.verify(token);
-          return payload?.userId || null;
-        } catch {
-          return null;
-        }
+        const payload = await getJWTPayload();
+        return payload?.userId || null;
       },
 
-      // Get full user from database
+      // Get full user from database (DEPRECATED - use userContextMiddleware instead)
       getUser: async () => {
-        const authHeader = headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+        console.warn('[AUTH] getUser() is deprecated. Use userContextMiddleware for optimized queries.');
+        const payload = await getJWTPayload();
+        if (!payload?.userId) return null;
 
-        const token = authHeader.substring(7);
+        const result = await pool.query(
+          'SELECT * FROM users WHERE id = $1',
+          [payload.userId]
+        );
 
-        try {
-          const payload = await jwt.verify(token);
-          if (!payload?.userId) return null;
-
-          const result = await pool.query(
-            'SELECT * FROM users WHERE id = $1',
-            [payload.userId]
-          );
-
-          return result.rows[0] || null;
-        } catch {
-          return null;
-        }
+        return result.rows[0] || null;
       },
 
       // Get current profile ID from JWT
       getCurrentProfileId: async () => {
-        const authHeader = headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-
-        const token = authHeader.substring(7);
-
-        try {
-          const payload = await jwt.verify(token);
-          return payload?.current_profile_id || null;
-        } catch {
-          return null;
-        }
+        const payload = await getJWTPayload();
+        return payload?.current_profile_id || null;
       },
 
       // Sign a new JWT token
@@ -75,6 +74,7 @@ export const authPlugin = new Elysia({ name: 'auth' })
     };
   })
   .decorate('requireAuth', function (includeUser = false) {
+    console.warn('[AUTH] requireAuth() decorator is deprecated. Use authMiddleware and userContextMiddleware instead.');
     return async ({ getUserId, getUser, set }) => {
       const userId = await getUserId();
 

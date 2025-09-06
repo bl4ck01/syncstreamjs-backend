@@ -1,27 +1,15 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { subscriptionValidatorPlugin } from '../middleware/subscriptionValidator.js';
+import { authMiddleware, userContextMiddleware, activeSubscriptionMiddleware } from '../middleware/auth.js';
 
 export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .use(authPlugin)
     .use(databasePlugin)
-    .guard({
-        beforeHandle: async ({ getUserId, db, set }) => {
-            const userId = await getUserId();
-            if (!userId) {
-                set.status = 401;
-                return {
-                    success: false,
-                    message: 'Unauthorized - Invalid or missing authentication token',
-                    data: null
-                };
-            }
-        }
-    })
-    .get('/', async ({ getUserId, db }) => {
-        const userId = await getUserId();
-
+    .use(authMiddleware) // Apply auth middleware to all profile routes
+    
+    // Get all profiles for user
+    .get('/', async ({ userId, db }) => {
         const profiles = await db.getMany(
             'SELECT id, name, avatar_url, is_kids_profile, created_at FROM profiles WHERE user_id = $1 AND is_active = true ORDER BY created_at',
             [userId]
@@ -33,59 +21,20 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         };
     })
 
-    // Create new profile
-    .guard({
-        beforeHandle: async ({ getUserId, db, set }) => {
-            const userId = await getUserId();
-            if (!userId) {
-                set.status = 401;
-                return {
-                    success: false,
-                    message: 'Unauthorized - Invalid or missing authentication token',
-                    data: null
-                };
-            }
-
-            // Check if user has an active or trialing subscription
-            const subscription = await db.getOne(
-                'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\')',
-                [userId]
-            );
-
-            if (!subscription) {
-                set.status = 403;
-                return {
-                    success: false,
-                    message: 'Active subscription required. Please subscribe to a plan to access this feature.',
-                    data: null
-                };
-            }
-        }
-    })
-    .post('/', async ({ body, getUserId, db }) => {
-        const userId = await getUserId();
-
+    // Create new profile - requires active subscription
+    .use(userContextMiddleware)
+    .use(activeSubscriptionMiddleware)
+    .post('/', async ({ body, userId, user, db }) => {
         // Body is already validated by Elysia
         const { name, avatar_url, parental_pin, is_kids_profile } = body;
 
-        // Get user's plan limits (subscription validator ensures user has active subscription)
-        const userPlan = await db.getOne(`
-      SELECT 
-        p.max_profiles
-      FROM users u
-      JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
-      JOIN plans p ON s.plan_id = p.id
-      WHERE u.id = $1
-    `, [userId]);
-
-        const maxProfiles = userPlan?.max_profiles;
-
-        // Check current profile count
+        // Check profile count against plan limit (plan already loaded in middleware)
         const profileCount = await db.getOne(
             'SELECT COUNT(*) as count FROM profiles WHERE user_id = $1',
             [userId]
         );
 
+        const maxProfiles = user.subscription?.plan?.max_profiles || 0;
         if (maxProfiles !== -1 && parseInt(profileCount.count) >= maxProfiles) {
             throw new Error(`Plan limit reached. Maximum profiles: ${maxProfiles}`);
         }
@@ -125,8 +74,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     })
 
     // Select profile for current session
-    .post('/:id/select', async ({ params, body, getUserId, db, signToken }) => {
-        const userId = await getUserId();
+    .post('/:id/select', async ({ params, body, userId, db, signToken, getUser }) => {
         const profileId = params.id;
 
         // Verify profile belongs to user
@@ -152,8 +100,8 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             }
         }
 
-        // Get user email for JWT
-        const user = await db.getOne('SELECT email FROM users WHERE id = $1', [userId]);
+        // Get user email for JWT (Note: this is one case where we still need getUser)
+        const user = await getUser();
 
         // Issue new JWT with selected profile
         const token = await signToken(userId, user.email, profileId);
@@ -178,8 +126,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     })
 
     // Update profile
-    .patch('/:id', async ({ params, body, getUserId, db }) => {
-        const userId = await getUserId();
+    .patch('/:id', async ({ params, body, userId, db }) => {
         const profileId = params.id;
 
         // Verify ownership
@@ -234,8 +181,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     })
 
     // Delete profile
-    .delete('/:id', async ({ params, getUserId, db }) => {
-        const userId = await getUserId();
+    .delete('/:id', async ({ params, userId, db }) => {
         const profileId = params.id;
 
         // Check ownership and ensure at least one profile remains

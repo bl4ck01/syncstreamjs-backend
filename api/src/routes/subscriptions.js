@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
+import { authMiddleware, userContextMiddleware } from '../middleware/auth.js';
 import { checkoutSchema, changePlanSchema } from '../utils/schemas.js';
 import Stripe from 'stripe';
 
@@ -10,39 +11,46 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
     .use(authPlugin)
     .use(databasePlugin)
 
-    // Get current subscription
-    .get('/current', async ({ getUserId, db, set }) => {
-        const userId = await getUserId();
-
-        if (!userId) {
-            set.status = 401;
+    // Get current subscription - OPTIMIZED using middleware
+    .use(authMiddleware)
+    .use(userContextMiddleware)
+    .get('/current', async ({ user }) => {
+        // Subscription data is already loaded in userContextMiddleware
+        if (!user.subscription) {
             return {
-                success: false,
-                message: 'Unauthorized - Invalid or missing authentication token',
+                success: true,
+                message: null,
                 data: null
             };
         }
 
-        const subscription = await db.getOne(`
-            SELECT 
-                s.*,
-                p.name as plan_name,
-                p.price_monthly,
-                p.price_annual,
-                p.max_profiles,
-                p.trial_days,
-                p.cine_party,
-                p.sync_data_across_devices,
-                p.record_live_tv,
-                p.download_offline_viewing,
-                p.parental_controls,
-                p.support_level
-            FROM subscriptions s
-            JOIN plans p ON s.plan_id = p.id
-            WHERE s.user_id = $1 AND s.status IN ('active', 'trialing')
-            ORDER BY s.created_at DESC
-            LIMIT 1
-        `, [userId]);
+        // Format response with subscription and plan details
+        const subscription = {
+            id: user.subscription.id,
+            user_id: user.id,
+            plan_id: user.subscription.plan_id,
+            status: user.subscription.status,
+            stripe_subscription_id: user.subscription.stripe_subscription_id,
+            current_period_start: user.subscription.current_period_start,
+            current_period_end: user.subscription.current_period_end,
+            cancel_at_period_end: user.subscription.cancel_at_period_end,
+            trial_start: user.subscription.trial_start,
+            trial_end: user.subscription.trial_end,
+            created_at: user.subscription.created_at,
+            // Plan details from the joined data
+            plan_name: user.subscription.plan_name,
+            price_monthly: user.subscription.plan.price_monthly,
+            price_annual: user.subscription.plan.price_annual,
+            max_profiles: user.subscription.plan.max_profiles,
+            max_playlists: user.subscription.plan.max_playlists,
+            trial_days: user.subscription.plan.trial_days,
+            cine_party: user.subscription.plan.features.cine_party,
+            sync_data_across_devices: user.subscription.plan.features.sync_data_across_devices,
+            record_live_tv: user.subscription.plan.features.record_live_tv,
+            download_offline_viewing: user.subscription.plan.features.download_offline_viewing,
+            parental_controls: user.subscription.plan.features.parental_controls,
+            support_level: user.subscription.plan.support_level
+        };
 
         return {
             success: true,
@@ -96,30 +104,10 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         };
     })
 
-    // Create checkout session for new subscription or upgrade
-    .post('/checkout', async ({ body, getUserId, getUser, db, set }) => {
-        const userId = await getUserId();
-
-        if (!userId) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - Invalid or missing authentication token',
-                data: null
-            };
-        }
-
-        const user = await getUser();
-
-        if (!user) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - User not found',
-                data: null
-            };
-        }
-
+    // Create checkout session for new subscription or upgrade - OPTIMIZED
+    .use(authMiddleware)
+    .use(userContextMiddleware)
+    .post('/checkout', async ({ body, user, db, set }) => {
         const { plan_id, billing_period } = body;
 
         // Get the plan by ID or name
@@ -134,13 +122,8 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             };
         }
 
-        // Check if user already has an active or trialing subscription
-        const existingSubscription = await db.getOne(
-            'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\')',
-            [userId]
-        );
-
-        if (existingSubscription) {
+        // Check if user already has an active or trialing subscription (already loaded in middleware)
+        if (user.subscription && ['active', 'trialing'].includes(user.subscription.status)) {
             set.status = 400;
             return {
                 success: false,
@@ -156,7 +139,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             const customer = await stripe.customers.create({
                 email: user.email,
                 metadata: {
-                    user_id: userId
+                    user_id: user.id
                 }
             });
 
@@ -165,7 +148,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             // Update user with Stripe customer ID
             await db.query(
                 'UPDATE users SET stripe_customer_id = $1 WHERE id = $2',
-                [stripeCustomerId, userId]
+                [stripeCustomerId, user.id]
             );
         }
 
@@ -190,7 +173,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         }
 
         // Log checkout started
-        console.log(`[SUBSCRIPTION] Checkout started for user ${userId}, plan: ${plan.name}, billing: ${billing_period}`);
+        console.log(`[SUBSCRIPTION] Checkout started for user ${user.id}, plan: ${plan.name}, billing: ${billing_period}`);
 
         // Create Stripe checkout session
         const sessionConfig = {
@@ -204,7 +187,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             success_url: successUrl,
             cancel_url: cancelUrl,
             metadata: {
-                user_id: userId,
+                user_id: user.id,
                 plan_id: plan.id
             }
         };
@@ -217,7 +200,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             sessionConfig.subscription_data = {
                 ...(trialEligible && { trial_period_days: 3 }),
                 metadata: {
-                    user_id: userId,
+                    user_id: user.id,
                     plan_id: plan.id
                 }
             };
@@ -237,48 +220,21 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         body: checkoutSchema
     })
 
-    // Change subscription plan
-    .post('/change-plan', async ({ body, getUserId, getUser, db, set }) => {
-        const userId = await getUserId();
+    // Change subscription plan - OPTIMIZED
+    .post('/change-plan', async ({ body, user, db, set }) => {
+        const { new_plan_id, billing_period } = body;
 
-        if (!userId) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - Invalid or missing authentication token',
-                data: null
-            };
-        }
-
-        const user = await getUser();
-
-        if (!user) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - User not found',
-                data: null
-            };
-        }
-
-        const { new_plan_id } = body;
-
-        // Get current subscription
-        const currentSubscription = await db.getOne(
-            'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\')',
-            [userId]
-        );
-
-        if (!currentSubscription || !currentSubscription.stripe_subscription_id) {
+        // Check current subscription (already loaded in middleware)
+        if (!user.subscription || !['active', 'trialing'].includes(user.subscription.status)) {
             set.status = 400;
             return {
                 success: false,
-                message: 'No active subscription found',
+                message: 'No active subscription found. Please create a new subscription first.',
                 data: null
             };
         }
 
-        // Get the new plan by ID or name
+        // Get new plan
         const newPlan = await getPlanByIdOrName(db, new_plan_id);
 
         if (!newPlan) {
@@ -290,460 +246,148 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             };
         }
 
-        // Get current plan details
-        const currentPlan = await db.getOne(
-            'SELECT * FROM plans WHERE id = $1',
-            [currentSubscription.plan_id]
-        );
+        // Determine the correct Stripe price ID
+        const newStripePriceId = billing_period === 'annually' ? newPlan.stripe_price_id_annual : newPlan.stripe_price_id;
 
-        // Log plan change requested
-        console.log(`[SUBSCRIPTION] Plan change requested from ${currentPlan?.name} to ${newPlan.name}`);
-
-        // Get the Stripe subscription
-        const stripeSubscription = await stripe.subscriptions.retrieve(
-            currentSubscription.stripe_subscription_id
-        );
-
-        // Validate that the subscription has items
-        if (!stripeSubscription.items || !stripeSubscription.items.data || stripeSubscription.items.data.length === 0) {
+        if (!newStripePriceId) {
             set.status = 400;
             return {
                 success: false,
-                message: 'Invalid subscription structure from Stripe',
-                data: null
-            };
-        }
-
-        // Update the subscription in Stripe
-        const updatedSubscription = await stripe.subscriptions.update(
-            currentSubscription.stripe_subscription_id,
-            {
-                items: [{
-                    id: stripeSubscription.items.data[0].id,
-                    price: newPlan.stripe_price_id
-                }],
-                proration_behavior: 'create_prorations',
-                billing_cycle_anchor: 'now', // Force immediate billing
-                metadata: {
-                    user_id: userId,
-                    plan_id: newPlan.id
-                }
-            }
-        );
-
-        // Log the updated subscription response for debugging
-        console.log(`[SUBSCRIPTION] Stripe response - current_period_end: ${updatedSubscription.current_period_end}, type: ${typeof updatedSubscription.current_period_end}`);
-        console.log(`[SUBSCRIPTION] New plan price: ${newPlan.stripe_price_id}, Old plan price: ${currentPlan?.stripe_price_id}`);
-
-        // Note: The actual database update will happen via webhook
-
-        // Log plan change scheduled
-        console.log(`[SUBSCRIPTION] Plan change scheduled for subscription: ${currentSubscription.stripe_subscription_id}`);
-
-        // Safely handle the effective date
-        let effectiveDate = null;
-        if (updatedSubscription.current_period_end) {
-            try {
-                effectiveDate = new Date(updatedSubscription.current_period_end * 1000).toISOString();
-            } catch (error) {
-                console.log(`[SUBSCRIPTION] Error converting effective date: ${error.message}`);
-                // Fallback to current date + 1 month if conversion fails
-                effectiveDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-            }
-        } else {
-            // If no current_period_end, use current date + 1 month as fallback
-            effectiveDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-        }
-
-        return {
-            success: true,
-            message: 'Plan change initiated',
-            data: {
-                new_plan: newPlan.name,
-                effective_date: effectiveDate
-            }
-        };
-    }, {
-        body: changePlanSchema
-    })
-
-    // Preview plan change proration
-    .post('/preview-plan-change', async ({ body, getUserId, getUser, db, set }) => {
-        const userId = await getUserId();
-
-        if (!userId) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - Invalid or missing authentication token',
-                data: null
-            };
-        }
-
-        const user = await getUser();
-
-        if (!user) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - User not found',
-                data: null
-            };
-        }
-
-        const { new_plan_id } = body;
-
-        // Get current subscription
-        const currentSubscription = await db.getOne(
-            'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\')',
-            [userId]
-        );
-
-        if (!currentSubscription || !currentSubscription.stripe_subscription_id) {
-            set.status = 400;
-            return {
-                success: false,
-                message: 'No active subscription found',
-                data: null
-            };
-        }
-
-        // Get the new plan by ID or name
-        const newPlan = await getPlanByIdOrName(db, new_plan_id);
-
-        if (!newPlan) {
-            set.status = 400;
-            return {
-                success: false,
-                message: `Plan not found: ${new_plan_id}. Please provide a valid plan ID or name.`,
-                data: null
-            };
-        }
-
-        // Get current plan details
-        const currentPlan = await db.getOne(
-            'SELECT * FROM plans WHERE id = $1',
-            [currentSubscription.plan_id]
-        );
-
-        if (!currentPlan) {
-            set.status = 400;
-            return {
-                success: false,
-                message: 'Current plan not found',
+                message: `No ${billing_period} pricing available for plan: ${newPlan.name}`,
                 data: null
             };
         }
 
         try {
-            // Get the Stripe subscription
-            const stripeSubscription = await stripe.subscriptions.retrieve(
-                currentSubscription.stripe_subscription_id
-            );
+            // Get Stripe subscription
+            const stripeSubscription = await stripe.subscriptions.retrieve(user.subscription.stripe_subscription_id);
 
-            // Use Stripe's native subscription preview to get accurate proration details
-            const preview = await stripe.subscriptions.retrieve(
-                currentSubscription.stripe_subscription_id,
-                {
-                    expand: ['latest_invoice', 'items.data.price']
-                }
-            );
-
-            // Create a preview of the subscription update using Stripe's preview method
-            const prorationPreview = await stripe.invoices.retrieveUpcoming({
-                customer: stripeSubscription.customer,
-                subscription: currentSubscription.stripe_subscription_id,
-                subscription_items: [{
+            // Update the subscription with new plan
+            const updatedSubscription = await stripe.subscriptions.update(stripeSubscription.id, {
+                items: [{
                     id: stripeSubscription.items.data[0].id,
-                    price: newPlan.stripe_price_id
+                    price: newStripePriceId
                 }],
-                subscription_proration_behavior: 'create_prorations'
+                proration_behavior: 'create_prorations',
+                metadata: {
+                    plan_id: newPlan.id,
+                    previous_plan_id: user.subscription.plan_id
+                }
             });
 
-            // Get detailed proration breakdown from Stripe
-            const prorationItems = prorationPreview.lines.data.filter(line =>
-                line.proration && line.proration.type === 'invoice_item'
-            );
-
-            // Calculate total proration amount
-            const totalProration = prorationItems.reduce((sum, item) => {
-                return sum + Math.abs(item.amount);
-            }, 0);
-
-            // Get current period info
-            const now = Math.floor(Date.now() / 1000);
-            const periodEnd = stripeSubscription.current_period_end;
-            const periodStart = stripeSubscription.current_period_start;
-            const daysRemaining = Math.ceil((periodEnd - now) / (24 * 60 * 60));
-            const totalPeriodDays = Math.ceil((periodEnd - periodStart) / (24 * 60 * 60));
+            // Don't update database here - let webhook handle it
+            console.log(`[SUBSCRIPTION] Plan change initiated for user ${user.id}: ${user.subscription.plan_name} -> ${newPlan.name}`);
 
             return {
                 success: true,
-                message: 'Plan change preview generated',
+                message: 'Plan change initiated successfully. You will receive an email confirmation.',
                 data: {
-                    current_plan: {
-                        name: currentPlan.name,
-                        price_monthly: currentPlan.price_monthly,
-                        stripe_price_id: currentPlan.stripe_price_id
-                    },
-                    new_plan: {
-                        name: newPlan.name,
-                        price_monthly: newPlan.price_monthly,
-                        stripe_price_id: newPlan.stripe_price_id
-                    },
-                    proration_details: {
-                        amount: totalProration / 100, // Convert from cents
-                        currency: prorationPreview.currency,
-                        days_remaining: daysRemaining,
-                        total_period_days: totalPeriodDays,
-                        effective_date: new Date().toISOString()
-                    },
-                    billing_period: {
-                        current_period_start: new Date(periodStart * 1000).toISOString(),
-                        current_period_end: new Date(periodEnd * 1000).toISOString()
-                    },
-                    preview_invoice: {
-                        subtotal: prorationPreview.subtotal / 100,
-                        total: prorationPreview.total / 100,
-                        amount_due: prorationPreview.amount_due / 100,
-                        next_payment_attempt: prorationPreview.next_payment_attempt ? new Date(prorationPreview.next_payment_attempt * 1000).toISOString() : null
-                    },
-                    stripe_proration_breakdown: {
-                        total_proration_amount: totalProration / 100,
-                        proration_items: prorationItems.map(item => ({
-                            description: item.description,
-                            amount: item.amount / 100,
-                            currency: item.currency,
-                            proration_type: item.proration.type,
-                            period_start: item.period?.start ? new Date(item.period.start * 1000).toISOString() : null,
-                            period_end: item.period?.end ? new Date(item.period.end * 1000).toISOString() : null
-                        }))
-                    }
+                    new_plan: newPlan.name,
+                    status: updatedSubscription.status,
+                    effective_date: new Date(updatedSubscription.current_period_end * 1000)
                 }
             };
-
         } catch (error) {
-            console.error('[SUBSCRIPTION] Error previewing plan change:', error);
-
-            // Handle specific Stripe errors
-            if (error.type === 'StripeError') {
-                console.error('[SUBSCRIPTION] Stripe error details:', {
-                    code: error.code,
-                    message: error.message,
-                    decline_code: error.decline_code
-                });
-
-                set.status = 400;
-                return {
-                    success: false,
-                    message: `Stripe error: ${error.message}`,
-                    data: null
-                };
-            }
-
-            set.status = 500;
-            return {
-                success: false,
-                message: 'Failed to generate plan change preview',
-                data: null
-            };
+            console.error('[SUBSCRIPTION] Plan change error:', error);
+            throw new Error('Failed to change plan. Please try again or contact support.');
         }
     }, {
         body: changePlanSchema
     })
 
-    // Cancel subscription
-    .post('/cancel', async ({ getUserId, db, set }) => {
-        const userId = await getUserId();
-
-        if (!userId) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - Invalid or missing authentication token',
-                data: null
-            };
-        }
-
-        // Get current subscription
-        const subscription = await db.getOne(
-            'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\')',
-            [userId]
-        );
-
-        if (!subscription || !subscription.stripe_subscription_id) {
+    // Cancel subscription - OPTIMIZED
+    .post('/cancel', async ({ user, set }) => {
+        // Check current subscription (already loaded in middleware)
+        if (!user.subscription || !['active', 'trialing'].includes(user.subscription.status)) {
             set.status = 400;
             return {
                 success: false,
-                message: 'No active subscription found',
+                message: 'No active subscription found to cancel.',
                 data: null
             };
         }
 
-        // Cancel at period end in Stripe
-        const canceledSubscription = await stripe.subscriptions.update(
-            subscription.stripe_subscription_id,
-            {
-                cancel_at_period_end: true
-            }
-        );
+        try {
+            // Cancel at period end
+            const canceledSubscription = await stripe.subscriptions.update(
+                user.subscription.stripe_subscription_id,
+                {
+                    cancel_at_period_end: true,
+                    metadata: {
+                        canceled_by: user.id,
+                        canceled_at: new Date().toISOString()
+                    }
+                }
+            );
 
-        // Update local database
-        await db.query(
-            'UPDATE subscriptions SET cancel_at_period_end = TRUE WHERE id = $1',
-            [subscription.id]
-        );
+            console.log(`[SUBSCRIPTION] Subscription canceled for user ${user.id}`);
 
-        // Log subscription cancellation scheduled
-        console.log(`[SUBSCRIPTION] Subscription canceled: ${subscription.stripe_subscription_id}`);
-
-        // Safely handle the cancel date
-        let cancelDate = null;
-        if (canceledSubscription.current_period_end) {
-            try {
-                cancelDate = new Date(canceledSubscription.current_period_end * 1000).toISOString();
-            } catch (error) {
-                console.log(`[SUBSCRIPTION] Error converting cancel date: ${error.message}`);
-                // Fallback to current date + 1 month if conversion fails
-                cancelDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-            }
-        } else {
-            // If no current_period_end, use current date + 1 month as fallback
-            cancelDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+            return {
+                success: true,
+                message: 'Subscription canceled successfully. You will have access until the end of your billing period.',
+                data: {
+                    cancel_at: new Date(canceledSubscription.current_period_end * 1000),
+                    status: 'canceled'
+                }
+            };
+        } catch (error) {
+            console.error('[SUBSCRIPTION] Cancellation error:', error);
+            throw new Error('Failed to cancel subscription. Please try again or contact support.');
         }
-
-        return {
-            success: true,
-            message: 'Subscription will be canceled at the end of the current period',
-            data: {
-                cancel_date: cancelDate
-            }
-        };
     })
 
-    // Reactivate canceled subscription
-    .post('/reactivate', async ({ getUserId, db, set }) => {
-        const userId = await getUserId();
-
-        if (!userId) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - Invalid or missing authentication token',
-                data: null
-            };
-        }
-
-        // Get current subscription
-        const subscription = await db.getOne(
-            'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\') AND cancel_at_period_end = TRUE',
-            [userId]
-        );
-
-        if (!subscription || !subscription.stripe_subscription_id) {
+    // Reactivate canceled subscription - OPTIMIZED
+    .post('/reactivate', async ({ user, set }) => {
+        // Check current subscription (already loaded in middleware)
+        if (!user.subscription) {
             set.status = 400;
             return {
                 success: false,
-                message: 'No canceled subscription found',
+                message: 'No subscription found to reactivate.',
                 data: null
             };
         }
 
-        // Reactivate in Stripe
-        const reactivatedSubscription = await stripe.subscriptions.update(
-            subscription.stripe_subscription_id,
-            {
-                cancel_at_period_end: false
-            }
-        );
-
-        // Update local database
-        await db.query(
-            'UPDATE subscriptions SET cancel_at_period_end = FALSE WHERE id = $1',
-            [subscription.id]
-        );
-
-        // Log subscription reactivation
-        console.log(`[SUBSCRIPTION] Subscription reactivated: ${subscription.stripe_subscription_id}`);
-
-        // Safely handle the next billing date
-        let nextBillingDate = null;
-        if (reactivatedSubscription.current_period_end) {
-            try {
-                nextBillingDate = new Date(reactivatedSubscription.current_period_end * 1000).toISOString();
-            } catch (error) {
-                console.log(`[SUBSCRIPTION] Error converting next billing date: ${error.message}`);
-                // Fallback to current date + 1 month if conversion fails
-                nextBillingDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-            }
-        } else {
-            // If no current_period_end, use current date + 1 month as fallback
-            nextBillingDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-        }
-
-        return {
-            success: true,
-            message: 'Subscription reactivated successfully',
-            data: {
-                next_billing_date: nextBillingDate
-            }
-        };
-    })
-
-    // Get billing portal URL
-    .get('/billing-portal', async ({ getUser, query, set }) => {
-        const user = await getUser();
-
-        if (!user) {
-            set.status = 401;
-            return {
-                success: false,
-                message: 'Unauthorized - User not found',
-                data: null
-            };
-        }
-
-        const { return_url } = query;
-
-        if (!user.stripe_customer_id) {
+        if (user.subscription.status !== 'active' || !user.subscription.cancel_at_period_end) {
             set.status = 400;
             return {
                 success: false,
-                message: 'No billing information found',
+                message: 'Only canceled subscriptions that are still active can be reactivated.',
                 data: null
             };
         }
 
-        const session = await stripe.billingPortal.sessions.create({
-            customer: user.stripe_customer_id,
-            return_url: return_url || `${process.env.FRONTEND_URL}/account`
-        });
+        try {
+            // Remove cancellation
+            const reactivatedSubscription = await stripe.subscriptions.update(
+                user.subscription.stripe_subscription_id,
+                {
+                    cancel_at_period_end: false,
+                    metadata: {
+                        reactivated_by: user.id,
+                        reactivated_at: new Date().toISOString()
+                    }
+                }
+            );
 
-        return {
-            success: true,
-            message: 'Billing portal session created',
-            data: {
-                portal_url: session.url
-            }
-        };
-    }, {
-        query: t.Object({
-            return_url: t.Optional(t.String({ format: 'url' }))
-        })
+            console.log(`[SUBSCRIPTION] Subscription reactivated for user ${user.id}`);
+
+            return {
+                success: true,
+                message: 'Subscription reactivated successfully.',
+                data: {
+                    status: 'active',
+                    cancel_at_period_end: false
+                }
+            };
+        } catch (error) {
+            console.error('[SUBSCRIPTION] Reactivation error:', error);
+            throw new Error('Failed to reactivate subscription. Please try again or contact support.');
+        }
     })
 
-    // Get subscription history
-    .get('/history', async ({ getUserId, db }) => {
-        const userId = await getUserId();
-
-        if (!userId) {
-            return {
-                success: false,
-                message: 'Unauthorized - Invalid or missing authentication token',
-                data: null
-            };
-        }
-
+    // Get subscription history - OPTIMIZED
+    .get('/history', async ({ userId, db }) => {
         const history = await db.getMany(`
             SELECT 
                 s.*,
@@ -751,7 +395,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 p.price_monthly,
                 p.price_annual
             FROM subscriptions s
-            JOIN plans p ON s.plan_id = p.id
+            LEFT JOIN plans p ON s.plan_id = p.id
             WHERE s.user_id = $1
             ORDER BY s.created_at DESC
         `, [userId]);
@@ -761,24 +405,55 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             message: null,
             data: history
         };
+    })
+
+    // Create portal session for billing management - OPTIMIZED
+    .post('/portal', async ({ user, set }) => {
+        if (!user.stripe_customer_id) {
+            set.status = 400;
+            return {
+                success: false,
+                message: 'No billing information found for this account.',
+                data: null
+            };
+        }
+
+        try {
+            const returnUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+            
+            const session = await stripe.billingPortal.sessions.create({
+                customer: user.stripe_customer_id,
+                return_url: `${returnUrl}/account`
+            });
+
+            return {
+                success: true,
+                message: 'Billing portal session created',
+                data: {
+                    url: session.url
+                }
+            };
+        } catch (error) {
+            console.error('[SUBSCRIPTION] Portal session error:', error);
+            throw new Error('Failed to create billing portal session. Please try again.');
+        }
     });
 
 // Helper function to get plan by ID or name
 async function getPlanByIdOrName(db, identifier) {
-    // Check if identifier is a UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    // First try as UUID
+    let plan = await db.getOne(
+        'SELECT * FROM plans WHERE id = $1 AND is_active = TRUE',
+        [identifier]
+    );
 
-    if (uuidRegex.test(identifier)) {
-        // If it's a UUID, search by ID
-        return await db.getOne(
-            'SELECT * FROM plans WHERE id = $1 AND is_active = TRUE',
-            [identifier]
-        );
-    } else {
-        // If it's not a UUID, search by name (case-insensitive)
-        return await db.getOne(
-            'SELECT * FROM plans WHERE name ILIKE $1 AND is_active = TRUE',
+    // If not found and not a valid UUID, try as name
+    if (!plan && !identifier.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+        plan = await db.getOne(
+            'SELECT * FROM plans WHERE LOWER(name) = LOWER($1) AND is_active = TRUE',
             [identifier]
         );
     }
+
+    return plan;
 }

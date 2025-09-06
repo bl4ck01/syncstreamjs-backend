@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
+import { authMiddleware, userContextMiddleware, roleMiddleware } from '../middleware/auth.js';
 import { isFeatureEnabled } from '../utils/env.js';
 import { AuthorizationError } from '../utils/errors.js';
 
@@ -8,20 +9,18 @@ export const analyticsRoutes = new Elysia({ prefix: '/analytics' })
     .use(authPlugin)
     .use(databasePlugin)
     .guard({
-        beforeHandle: async ({ getUser, set }) => {
+        beforeHandle: ({ set }) => {
             if (!isFeatureEnabled('advanced_analytics')) {
                 set.status = 503;
                 throw new Error('Analytics feature is not enabled');
             }
-
-            const user = await getUser();
-            if (!user || user.role !== 'admin') {
-                throw new AuthorizationError('Admin access required for analytics');
-            }
         }
     })
+    .use(authMiddleware)
+    .use(userContextMiddleware)
+    .use(roleMiddleware(['admin'])) // Apply role check to all analytics routes
 
-    // User Analytics
+    // User Analytics - OPTIMIZED with single query
     .get('/users', async ({ db, query }) => {
         const { startDate, endDate, groupBy = 'day' } = query;
 
@@ -31,46 +30,47 @@ export const analyticsRoutes = new Elysia({ prefix: '/analytics' })
 
         const params = startDate && endDate ? [startDate, endDate] : [];
 
-        // User growth over time
-        const userGrowth = await db.query(`
+        // All user analytics in one query
+        const analyticsData = await db.getOne(`
+            WITH user_growth AS (
+                SELECT 
+                    DATE_TRUNC('${groupBy}', created_at) as period,
+                    COUNT(*) as new_users,
+                    COUNT(CASE WHEN role = 'reseller' THEN 1 END) as new_resellers,
+                    COUNT(CASE WHEN has_used_trial THEN 1 END) as trial_users
+                FROM users
+                ${dateFilter}
+                GROUP BY period
+            ),
+            demographics AS (
+                SELECT 
+                    role,
+                    COUNT(*) as count,
+                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as percentage
+                FROM users
+                GROUP BY role
+            ),
+            daily_active AS (
+                SELECT 
+                    COUNT(*) as daily_active,
+                    DATE_TRUNC('day', created_at) as date
+                FROM users
+                WHERE created_at >= NOW() - INTERVAL '30 days'
+                GROUP BY date
+            )
             SELECT 
-                DATE_TRUNC('${groupBy}', created_at) as period,
-                COUNT(*) as new_users,
-                COUNT(CASE WHEN role = 'reseller' THEN 1 END) as new_resellers,
-                COUNT(CASE WHEN has_used_trial THEN 1 END) as trial_users
-            FROM users
-            ${dateFilter}
-            GROUP BY period
-            ORDER BY period
+                (SELECT json_agg(row_to_json(ug.*) ORDER BY period) FROM user_growth ug) as growth,
+                (SELECT json_agg(row_to_json(d.*)) FROM demographics d) as demographics,
+                (SELECT json_agg(row_to_json(da.*) ORDER BY date) FROM daily_active da) as active_users,
+                (SELECT COUNT(*) FROM users) as total_users
         `, params);
 
-        // User demographics
-        const demographics = await db.query(`
-            SELECT 
-                role,
-                COUNT(*) as count,
-                ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as percentage
-            FROM users
-            GROUP BY role
-        `);
-
-        // Active users (users created in last 30 days)
-        const activeUsers = await db.query(`
-            SELECT 
-                COUNT(*) as daily_active,
-                DATE_TRUNC('day', created_at) as date
-            FROM users
-            WHERE created_at >= NOW() - INTERVAL '30 days'
-            GROUP BY date
-            ORDER BY date
-        `);
-
         return {
-            growth: userGrowth.rows,
-            demographics: demographics.rows,
-            activeUsers: activeUsers.rows,
+            growth: analyticsData.growth || [],
+            demographics: analyticsData.demographics || [],
+            activeUsers: analyticsData.active_users || [],
             summary: {
-                totalUsers: demographics.rows.reduce((sum, r) => sum + parseInt(r.count), 0),
+                totalUsers: analyticsData.total_users,
                 period: startDate && endDate ? 'custom' : 'last_30_days'
             }
         };
@@ -86,7 +86,7 @@ export const analyticsRoutes = new Elysia({ prefix: '/analytics' })
         })
     })
 
-    // Revenue Analytics
+    // Revenue Analytics - OPTIMIZED
     .get('/revenue', async ({ db, query }) => {
         const { startDate, endDate, groupBy = 'month' } = query;
 
@@ -96,70 +96,77 @@ export const analyticsRoutes = new Elysia({ prefix: '/analytics' })
 
         const params = startDate && endDate ? [startDate, endDate] : [];
 
-        // Revenue over time
-        const revenueData = await db.query(`
+        // Comprehensive revenue analytics in one query
+        const revenueData = await db.getOne(`
+            WITH revenue_over_time AS (
+                SELECT 
+                    DATE_TRUNC('${groupBy}', s.created_at) as period,
+                    SUM(CASE 
+                        WHEN p.billing_interval = 'month' THEN p.price_monthly
+                        WHEN p.billing_interval = 'year' THEN p.price_annual / 12
+                        ELSE 0 
+                    END) as revenue,
+                    COUNT(DISTINCT s.user_id) as subscribers,
+                    AVG(CASE 
+                        WHEN p.billing_interval = 'month' THEN p.price_monthly
+                        WHEN p.billing_interval = 'year' THEN p.price_annual / 12
+                        ELSE 0 
+                    END) as arpu
+                FROM subscriptions s
+                JOIN plans p ON s.plan_id = p.id
+                WHERE s.status IN ('active', 'trialing') ${dateFilter}
+                GROUP BY period
+            ),
+            plan_breakdown AS (
+                SELECT 
+                    p.name as plan_name,
+                    COUNT(s.id) as subscriber_count,
+                    SUM(CASE 
+                        WHEN p.billing_interval = 'month' THEN p.price_monthly
+                        WHEN p.billing_interval = 'year' THEN p.price_annual / 12
+                        ELSE 0 
+                    END) as mrr
+                FROM subscriptions s
+                JOIN plans p ON s.plan_id = p.id
+                WHERE s.status = 'active'
+                GROUP BY p.name, p.price_monthly
+            ),
+            churn_metrics AS (
+                SELECT 
+                    DATE_TRUNC('month', s.updated_at) as month,
+                    COUNT(CASE WHEN s.status = 'canceled' THEN 1 END) as churned,
+                    COUNT(*) as total,
+                    ROUND(COUNT(CASE WHEN s.status = 'canceled' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 2) as churn_rate
+                FROM subscriptions s
+                WHERE s.updated_at >= NOW() - INTERVAL '6 months'
+                GROUP BY month
+            ),
+            current_mrr AS (
+                SELECT 
+                    SUM(CASE 
+                        WHEN p.billing_interval = 'month' THEN p.price_monthly
+                        WHEN p.billing_interval = 'year' THEN p.price_annual / 12
+                        ELSE 0 
+                    END) as total_mrr,
+                    COUNT(DISTINCT s.user_id) as active_subscribers
+                FROM subscriptions s
+                JOIN plans p ON s.plan_id = p.id
+                WHERE s.status = 'active'
+            )
             SELECT 
-                DATE_TRUNC('${groupBy}', s.current_period_start) as period,
-                COUNT(DISTINCT s.user_id) as subscribers,
-                SUM(p.price_monthly) as revenue,
-                AVG(p.price_monthly) as avg_revenue_per_user,
-                p.name as plan_name
-            FROM subscriptions s
-            JOIN plans p ON s.plan_id = p.id
-            WHERE s.status = 'active' ${dateFilter}
-            GROUP BY period, p.name
-            ORDER BY period, p.name
+                (SELECT json_agg(row_to_json(rot.*) ORDER BY period) FROM revenue_over_time rot) as revenue_trend,
+                (SELECT json_agg(row_to_json(pb.*) ORDER BY mrr DESC) FROM plan_breakdown pb) as plan_breakdown,
+                (SELECT json_agg(row_to_json(cm.*) ORDER BY month) FROM churn_metrics cm) as churn_data,
+                (SELECT row_to_json(cmrr.*) FROM current_mrr cmrr) as current_metrics
         `, params);
 
-        // Subscription distribution
-        const planDistribution = await db.query(`
-            SELECT 
-                p.name as plan,
-                COUNT(s.id) as count,
-                SUM(p.price_monthly) as monthly_revenue,
-                ROUND(COUNT(s.id) * 100.0 / SUM(COUNT(s.id)) OVER(), 2) as percentage
-            FROM subscriptions s
-            JOIN plans p ON s.plan_id = p.id
-            WHERE s.status = 'active'
-            GROUP BY p.name
-            ORDER BY monthly_revenue DESC
-        `);
-
-        // Churn rate
-        const churnData = await db.query(`
-            SELECT 
-                DATE_TRUNC('month', updated_at) as month,
-                COUNT(CASE WHEN status = 'canceled' THEN 1 END) as churned,
-                COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
-                ROUND(
-                    COUNT(CASE WHEN status = 'canceled' THEN 1 END) * 100.0 / 
-                    NULLIF(COUNT(*), 0), 2
-                ) as churn_rate
-            FROM subscriptions
-            WHERE updated_at >= NOW() - INTERVAL '12 months'
-            GROUP BY month
-            ORDER BY month
-        `);
-
-        // MRR (Monthly Recurring Revenue)
-        const mrrData = await db.query(`
-            SELECT 
-                SUM(p.price_monthly) as current_mrr,
-                COUNT(DISTINCT s.user_id) as paying_customers,
-                AVG(p.price_monthly) as arpu
-            FROM subscriptions s
-            JOIN plans p ON s.plan_id = p.id
-            WHERE s.status = 'active'
-        `);
-
         return {
-            revenue: revenueData.rows,
-            planDistribution: planDistribution.rows,
-            churn: churnData.rows,
-            mrr: mrrData.rows[0],
+            revenueTrend: revenueData.revenue_trend || [],
+            planBreakdown: revenueData.plan_breakdown || [],
+            churnData: revenueData.churn_data || [],
+            currentMetrics: revenueData.current_metrics || { total_mrr: 0, active_subscribers: 0 },
             summary: {
-                totalRevenue: planDistribution.rows.reduce((sum, r) => sum + parseFloat(r.monthly_revenue || 0), 0),
-                averageChurnRate: churnData.rows.reduce((sum, r) => sum + parseFloat(r.churn_rate || 0), 0) / churnData.rows.length
+                period: startDate && endDate ? 'custom' : 'last_12_months'
             }
         };
     }, {
@@ -175,237 +182,136 @@ export const analyticsRoutes = new Elysia({ prefix: '/analytics' })
         })
     })
 
-    // Content Analytics
-    .get('/content', async ({ db }) => {
-        // Most favorited items
-        const topFavorites = await db.query(`
-            SELECT 
-                item_type,
-                item_name,
-                item_id,
-                COUNT(*) as favorite_count
-            FROM favorites
-            GROUP BY item_type, item_name, item_id
-            ORDER BY favorite_count DESC
-            LIMIT 20
-        `);
-
-        // Watch progress statistics
-        const watchStats = await db.query(`
-            SELECT 
-                item_type,
-                COUNT(DISTINCT profile_id) as unique_viewers,
-                COUNT(*) as total_views,
-                AVG(progress_seconds) as avg_watch_time,
-                COUNT(CASE WHEN completed THEN 1 END) as completions,
-                ROUND(
-                    COUNT(CASE WHEN completed THEN 1 END) * 100.0 / 
-                    NULLIF(COUNT(*), 0), 2
-                ) as completion_rate
-            FROM watch_progress
-            GROUP BY item_type
-        `);
-
-        // Playlist usage
-        const playlistStats = await db.query(`
-            SELECT 
-                COUNT(*) as total_playlists,
-                COUNT(DISTINCT user_id) as unique_users,
-                COUNT(CASE WHEN is_active THEN 1 END) as active_playlists,
-                AVG(
-                    EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400
-                ) as avg_playlist_age_days
-            FROM playlists
-        `);
-
-        // Profile usage
-        const profileStats = await db.query(`
-            SELECT 
-                COUNT(*) as total_profiles,
-                COUNT(DISTINCT p.user_id) as users_with_profiles,
-                COUNT(CASE WHEN p.is_kids_profile THEN 1 END) as kids_profiles,
-                COUNT(CASE WHEN p.parental_pin IS NOT NULL THEN 1 END) as protected_profiles,
-                AVG(profiles_per_user) as avg_profiles_per_user
-            FROM profiles p
-            LEFT JOIN (
+    // Subscription Analytics - OPTIMIZED
+    .get('/subscriptions', async ({ db }) => {
+        const analyticsData = await db.getOne(`
+            WITH status_breakdown AS (
                 SELECT 
-                    user_id,
-                    COUNT(*) as profiles_per_user
-                FROM profiles
-                GROUP BY user_id
-            ) user_profiles ON p.user_id = user_profiles.user_id
-        `);
-
-        return {
-            topFavorites: topFavorites.rows,
-            watchStatistics: watchStats.rows,
-            playlistUsage: playlistStats.rows[0],
-            profileUsage: profileStats.rows[0]
-        };
-    })
-
-    // Reseller Analytics
-    .get('/resellers', async ({ db }) => {
-        // Reseller performance
-        const resellerStats = await db.query(`
-            SELECT 
-                r.id,
-                r.email,
-                r.full_name,
-                r.credits_balance,
-                COUNT(DISTINCT c.id) as total_clients,
-                COUNT(DISTINCT CASE WHEN s.status = 'active' THEN c.id END) as active_clients,
-                SUM(CASE WHEN ct.transaction_type = 'client_created' THEN ABS(ct.amount) ELSE 0 END) as credits_used,
-                SUM(CASE WHEN ct.transaction_type = 'purchase' THEN ct.amount ELSE 0 END) as credits_purchased
-            FROM users r
-            LEFT JOIN users c ON c.parent_reseller_id = r.id
-            LEFT JOIN subscriptions s ON s.user_id = c.id
-            LEFT JOIN credits_transactions ct ON ct.user_id = r.id
-            WHERE r.role = 'reseller'
-            GROUP BY r.id, r.email, r.full_name, r.credits_balance
-            ORDER BY total_clients DESC
-        `);
-
-        // Credit transactions summary
-        const creditStats = await db.query(`
-            SELECT 
-                transaction_type,
-                COUNT(*) as count,
-                SUM(ABS(amount)) as total_amount,
-                AVG(ABS(amount)) as avg_amount
-            FROM credits_transactions
-            GROUP BY transaction_type
-        `);
-
-        return {
-            resellers: resellerStats.rows,
-            creditTransactions: creditStats.rows,
-            summary: {
-                totalResellers: resellerStats.rows.length,
-                totalClients: resellerStats.rows.reduce((sum, r) => sum + parseInt(r.total_clients || 0), 0),
-                totalCreditsInCirculation: resellerStats.rows.reduce((sum, r) => sum + parseInt(r.credits_balance || 0), 0)
-            }
-        };
-    })
-
-    // System Performance Analytics
-    .get('/performance', async ({ db }) => {
-        // Database performance
-        const dbStats = await db.query(`
-            SELECT 
-                schemaname,
-                tablename,
-                n_live_tup as row_count,
-                n_dead_tup as dead_rows,
-                last_vacuum,
-                last_autovacuum
-            FROM pg_stat_user_tables
-            ORDER BY n_live_tup DESC
-        `);
-
-        // Index usage
-        const indexStats = await db.query(`
-            SELECT 
-                schemaname,
-                tablename,
-                indexname,
-                idx_scan as index_scans,
-                idx_tup_read as tuples_read,
-                idx_tup_fetch as tuples_fetched
-            FROM pg_stat_user_indexes
-            ORDER BY idx_scan DESC
-            LIMIT 20
-        `);
-
-        // Slow queries (if pg_stat_statements is enabled)
-        let slowQueries = { rows: [] };
-        try {
-            slowQueries = await db.query(`
+                    status,
+                    COUNT(*) as count,
+                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as percentage
+                FROM subscriptions
+                WHERE status != 'incomplete'
+                GROUP BY status
+            ),
+            trial_conversion AS (
                 SELECT 
-                    query,
-                    calls,
-                    mean_exec_time,
-                    max_exec_time,
-                    total_exec_time
-                FROM pg_stat_statements
-                WHERE query NOT LIKE '%pg_stat%'
-                ORDER BY mean_exec_time DESC
-                LIMIT 10
-            `);
-        } catch (e) {
-            // pg_stat_statements might not be enabled
-        }
+                    COUNT(CASE WHEN status = 'active' AND trial_end IS NOT NULL THEN 1 END) as converted_trials,
+                    COUNT(CASE WHEN trial_end IS NOT NULL THEN 1 END) as total_trials,
+                    ROUND(
+                        COUNT(CASE WHEN status = 'active' AND trial_end IS NOT NULL THEN 1 END) * 100.0 / 
+                        NULLIF(COUNT(CASE WHEN trial_end IS NOT NULL THEN 1 END), 0), 
+                        2
+                    ) as conversion_rate
+                FROM subscriptions
+            ),
+            lifetime_value AS (
+                SELECT 
+                    AVG(EXTRACT(EPOCH FROM (COALESCE(s.canceled_at, NOW()) - s.created_at)) / 2592000) as avg_lifetime_months,
+                    AVG(
+                        EXTRACT(EPOCH FROM (COALESCE(s.canceled_at, NOW()) - s.created_at)) / 2592000 * 
+                        CASE 
+                            WHEN p.billing_interval = 'month' THEN p.price_monthly
+                            WHEN p.billing_interval = 'year' THEN p.price_annual / 12
+                            ELSE 0 
+                        END
+                    ) as avg_ltv
+                FROM subscriptions s
+                JOIN plans p ON s.plan_id = p.id
+                WHERE s.status IN ('active', 'canceled')
+            ),
+            growth_metrics AS (
+                SELECT 
+                    DATE_TRUNC('month', created_at) as month,
+                    COUNT(*) as new_subscriptions,
+                    SUM(COUNT(*)) OVER (ORDER BY DATE_TRUNC('month', created_at)) as cumulative_total
+                FROM subscriptions
+                WHERE created_at >= NOW() - INTERVAL '12 months'
+                GROUP BY month
+            )
+            SELECT 
+                (SELECT json_agg(row_to_json(sb.*)) FROM status_breakdown sb) as status_breakdown,
+                (SELECT row_to_json(tc.*) FROM trial_conversion tc) as trial_conversion,
+                (SELECT row_to_json(lv.*) FROM lifetime_value lv) as lifetime_value,
+                (SELECT json_agg(row_to_json(gm.*) ORDER BY month) FROM growth_metrics gm) as growth_metrics
+        `);
 
         return {
-            tables: dbStats.rows,
-            indexes: indexStats.rows,
-            slowQueries: slowQueries.rows,
-            connectionPool: {
-                total: db.pool?.totalCount || 0,
-                idle: db.pool?.idleCount || 0,
-                waiting: db.pool?.waitingCount || 0
-            }
+            statusBreakdown: analyticsData.status_breakdown || [],
+            trialConversion: analyticsData.trial_conversion || {},
+            lifetimeValue: analyticsData.lifetime_value || {},
+            growthMetrics: analyticsData.growth_metrics || []
         };
     })
 
-    // Export data for reporting
-    .get('/export', async ({ db, query, set }) => {
-        const { format = 'json', report } = query;
+    // Usage Analytics - OPTIMIZED
+    .get('/usage', async ({ db }) => {
+        const usageData = await db.getOne(`
+            WITH profile_usage AS (
+                SELECT 
+                    u.id as user_id,
+                    COUNT(p.id) as profile_count,
+                    s.plan_id,
+                    pl.max_profiles,
+                    ROUND(COUNT(p.id) * 100.0 / NULLIF(pl.max_profiles, 0), 2) as usage_percentage
+                FROM users u
+                LEFT JOIN profiles p ON u.id = p.user_id AND p.is_active = true
+                LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
+                LEFT JOIN plans pl ON s.plan_id = pl.id
+                WHERE s.id IS NOT NULL
+                GROUP BY u.id, s.plan_id, pl.max_profiles
+            ),
+            feature_adoption AS (
+                SELECT 
+                    COUNT(DISTINCT u.id) as total_users,
+                    COUNT(DISTINCT CASE WHEN p.id IS NOT NULL THEN u.id END) as users_with_profiles,
+                    COUNT(DISTINCT CASE WHEN pl.id IS NOT NULL THEN u.id END) as users_with_playlists,
+                    COUNT(DISTINCT CASE WHEN f.profile_id IS NOT NULL THEN u.id END) as users_with_favorites,
+                    ROUND(COUNT(DISTINCT CASE WHEN p.id IS NOT NULL THEN u.id END) * 100.0 / COUNT(DISTINCT u.id), 2) as profile_adoption,
+                    ROUND(COUNT(DISTINCT CASE WHEN pl.id IS NOT NULL THEN u.id END) * 100.0 / COUNT(DISTINCT u.id), 2) as playlist_adoption,
+                    ROUND(COUNT(DISTINCT CASE WHEN f.profile_id IS NOT NULL THEN u.id END) * 100.0 / COUNT(DISTINCT u.id), 2) as favorite_adoption
+                FROM users u
+                LEFT JOIN profiles p ON u.id = p.user_id AND p.is_active = true
+                LEFT JOIN playlists pl ON u.id = pl.user_id AND pl.is_active = true
+                LEFT JOIN favorites f ON p.id = f.profile_id
+                WHERE EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id = u.id AND s.status IN ('active', 'trialing'))
+            ),
+            avg_usage AS (
+                SELECT 
+                    AVG(profile_count) as avg_profiles_per_user,
+                    AVG(usage_percentage) as avg_profile_usage,
+                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY profile_count) as median_profiles,
+                    MAX(profile_count) as max_profiles_created
+                FROM profile_usage
+            )
+            SELECT 
+                (SELECT row_to_json(fa.*) FROM feature_adoption fa) as feature_adoption,
+                (SELECT row_to_json(au.*) FROM avg_usage au) as average_usage,
+                (SELECT json_agg(json_build_object(
+                    'usage_range', 
+                    CASE 
+                        WHEN usage_percentage = 0 THEN '0%'
+                        WHEN usage_percentage <= 25 THEN '1-25%'
+                        WHEN usage_percentage <= 50 THEN '26-50%'
+                        WHEN usage_percentage <= 75 THEN '51-75%'
+                        WHEN usage_percentage <= 100 THEN '76-100%'
+                        ELSE '>100%'
+                    END,
+                    'user_count', COUNT(*)
+                )) FROM profile_usage GROUP BY 
+                    CASE 
+                        WHEN usage_percentage = 0 THEN '0%'
+                        WHEN usage_percentage <= 25 THEN '1-25%'
+                        WHEN usage_percentage <= 50 THEN '26-50%'
+                        WHEN usage_percentage <= 75 THEN '51-75%'
+                        WHEN usage_percentage <= 100 THEN '76-100%'
+                        ELSE '>100%'
+                    END) as usage_distribution
+        `);
 
-        let data;
-        switch (report) {
-            case 'users':
-                data = await db.query('SELECT * FROM users ORDER BY created_at DESC');
-                break;
-            case 'subscriptions':
-                data = await db.query(`
-                    SELECT s.*, u.email, p.name as plan_name 
-                    FROM subscriptions s
-                    JOIN users u ON s.user_id = u.id
-                    JOIN plans p ON s.plan_id = p.id
-                    ORDER BY s.created_at DESC
-                `);
-                break;
-            case 'revenue':
-                data = await db.query(`
-                    SELECT 
-                        DATE_TRUNC('month', s.created_at) as month,
-                        COUNT(*) as subscriptions,
-                        SUM(p.price_monthly) as revenue
-                    FROM subscriptions s
-                    JOIN plans p ON s.plan_id = p.id
-                    WHERE s.status = 'active'
-                    GROUP BY month
-                    ORDER BY month
-                `);
-                break;
-            default:
-                throw new Error('Invalid report type');
-        }
-
-        if (format === 'csv') {
-            // Convert to CSV
-            const headers = Object.keys(data.rows[0] || {});
-            const csv = [
-                headers.join(','),
-                ...data.rows.map(row =>
-                    headers.map(h => JSON.stringify(row[h] ?? '')).join(',')
-                )
-            ].join('\n');
-
-            set.headers['Content-Type'] = 'text/csv';
-            set.headers['Content-Disposition'] = `attachment; filename="${report}-${Date.now()}.csv"`;
-            return csv;
-        }
-
-        return data.rows;
-    }, {
-        query: t.Object({
-            format: t.Optional(t.Union([t.Literal('json'), t.Literal('csv')])),
-            report: t.Union([
-                t.Literal('users'),
-                t.Literal('subscriptions'),
-                t.Literal('revenue')
-            ])
-        })
+        return {
+            featureAdoption: usageData.feature_adoption || {},
+            averageUsage: usageData.average_usage || {},
+            usageDistribution: usageData.usage_distribution || []
+        };
     });
