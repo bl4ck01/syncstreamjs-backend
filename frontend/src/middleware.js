@@ -51,13 +51,13 @@ export async function middleware(request) {
         }
 
         // If token is valid and user visits auth pages -> redirect appropriately
-        if (pathname === '/auth/login' || pathname === '/auth/register') {
+        else if (pathname === '/auth/login' || pathname === '/auth/register') {
             // Check subscription status to determine where to redirect
-            if (validToken.user?.subscription_status === 'none') {
-                return NextResponse.redirect(new URL('/pricing', request.url));
-            } else {
-                return NextResponse.redirect(new URL('/', request.url));
-            }
+            return NextResponse.redirect(new URL('/', request.url));
+        }
+
+        else if (validToken.user?.subscription_status === 'none' && pathname !== '/pricing') {
+            return NextResponse.redirect(new URL('/pricing', request.url));
         }
 
     }

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { GoogleIcon } from "@/components/icons";
 import { register } from "@/server/actions";
+import { toast } from "sonner";
 
 const registerSchema = z
   .object({
@@ -50,17 +51,19 @@ export default function Register() {
         }
       } else {
         // Handle error - show error message
-        form.setError("root", {
-          type: "manual",
-          message: response.message || "Registration failed. Please try again."
-        });
+        // form.setError("root", {
+        //   type: "manual",
+        //   message: response.message || "Registration failed. Please try again."
+        // });
+        toast.error(response.message || "Registration failed. Please try again.");
       }
     } catch (error) {
       console.error("Register error:", error);
-      form.setError("root", {
-        type: "manual",
-        message: "An unexpected error occurred. Please try again."
-      });
+      // form.setError("root", {
+      //   type: "manual",
+      //   message: "An unexpected error occurred. Please try again."
+      // });
+      toast.error(error.message || "An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }

@@ -90,32 +90,45 @@
         <div class="test-section">
             <h3>✅ Success Flow Test</h3>
             <p class="description">
-                Test the success redirect endpoint that users see after completing payment.
+                Test the success page that users see after completing payment.
             </p>
             <div class="endpoint">
-                GET /api/v1/webhooks/success?session_id=cs_test_123...
+                Frontend: http://localhost:3001/payment/success?session_id=cs_test_123...
             </div>
             <p class="description">
-                This endpoint retrieves the Stripe session and shows subscription details.
+                This page retrieves the Stripe session and shows subscription details.
             </p>
-            <a href="/api/v1/webhooks/success?session_id=cs_test_demo" class="button">
-                Test Success Endpoint
+            <a href="http://localhost:3001/payment/success?session_id=cs_test_demo" class="button" target="_blank">
+                Test Success Page
             </a>
         </div>
 
         <div class="test-section">
             <h3>❌ Cancel Flow Test</h3>
             <p class="description">
-                Test the cancel redirect endpoint that users see after canceling payment.
+                Test the cancel page that users see after canceling payment.
             </p>
             <div class="endpoint">
-                GET /api/v1/webhooks/cancel?session_id=cs_test_123...
+                Frontend: http://localhost:3001/payment/cancel?session_id=cs_test_123...
             </div>
             <p class="description">
-                This endpoint shows cancellation information and next steps.
+                This page shows cancellation information and next steps.
             </p>
-            <a href="/api/v1/webhooks/cancel?session_id=cs_test_demo" class="button danger">
-                Test Cancel Endpoint
+            <a href="http://localhost:3001/payment/cancel?session_id=cs_test_demo" class="button danger" target="_blank">
+                Test Cancel Page
+            </a>
+        </div>
+
+        <div class="test-section">
+            <h3>🔗 Session Details API Test</h3>
+            <p class="description">
+                Test the session details endpoint that the frontend uses to get payment information.
+            </p>
+            <div class="endpoint">
+                GET /api/v1/webhooks/session-details?session_id=cs_test_123...
+            </div>
+            <a href="/api/v1/webhooks/session-details?session_id=cs_test_demo" class="button">
+                Test Session Details API
             </a>
         </div>
 
@@ -138,8 +151,9 @@
                 Make sure these environment variables are set in your .env file:
             </p>
             <div class="endpoint">
-                STRIPE_SUCCESS_URL=http://localhost:3000/api/v1/webhooks/success?session_id={CHECKOUT_SESSION_ID}
-                STRIPE_CANCEL_URL=http://localhost:3000/api/v1/webhooks/cancel?session_id={CHECKOUT_SESSION_ID}
+                FRONTEND_URL=http://localhost:3001
+                STRIPE_SUCCESS_URL=http://localhost:3001/payment/success?session_id={CHECKOUT_SESSION_ID}
+                STRIPE_CANCEL_URL=http://localhost:3001/payment/cancel?session_id={CHECKOUT_SESSION_ID}
                 SUPPORT_EMAIL=support@yourdomain.com
             </div>
         </div>
@@ -157,3 +171,4 @@
     </div>
 </body>
 </html>
+

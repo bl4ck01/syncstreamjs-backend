@@ -172,9 +172,10 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         // Determine if user is eligible for trial
         const trialEligible = !user.has_used_trial;
 
-        // Use secure, predefined URLs from environment variables
-        const successUrl = process.env.STRIPE_SUCCESS_URL || `${process.env.API_URL || 'http://localhost:3000'}/api/v1/webhooks/success?session_id={CHECKOUT_SESSION_ID}`;
-        const cancelUrl = process.env.STRIPE_CANCEL_URL || `${process.env.API_URL || 'http://localhost:3000'}/api/v1/webhooks/cancel?session_id={CHECKOUT_SESSION_ID}`;
+        // Use frontend URLs for success and cancel pages
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+        const successUrl = process.env.STRIPE_SUCCESS_URL || `${frontendUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`;
+        const cancelUrl = process.env.STRIPE_CANCEL_URL || `${frontendUrl}/payment/cancel?session_id={CHECKOUT_SESSION_ID}`;
 
         // Determine the correct Stripe price ID based on billing period
         const stripePriceId = billing_period === 'annually' ? plan.stripe_price_id_annual : plan.stripe_price_id;

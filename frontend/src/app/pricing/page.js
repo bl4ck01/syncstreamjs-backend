@@ -11,7 +11,7 @@ export default async function PricingPage() {
   const plans = plansResponse?.success && plansResponse?.data ? plansResponse.data : [];
 
   return (
-    <div className="min-h-screen bg-black relative overflow-hidden">
+    <div className="h-screen bg-black relative overflow-hidden">
       {/* Sparkles background effect */}
       <div className="absolute inset-0 w-full h-full">
         <SparklesCore
