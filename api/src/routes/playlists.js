@@ -1,30 +1,16 @@
 import { Elysia } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { subscriptionValidatorPlugin } from '../middleware/subscriptionValidator.js';
+import { authMiddleware, userContextMiddleware, activeSubscriptionMiddleware } from '../middleware/auth.js';
 import { createPlaylistSchema, updatePlaylistSchema, idParamSchema } from '../utils/schemas.js';
 
 export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     .use(authPlugin)
     .use(databasePlugin)
-    .guard({
-        beforeHandle: async ({ getUserId, set }) => {
-            const userId = await getUserId();
-            if (!userId) {
-                set.status = 401;
-                return {
-                    success: false,
-                    message: 'Unauthorized - Invalid or missing authentication token',
-                    data: null
-                };
-            }
-        }
-    })
+    .use(authMiddleware) // Apply auth middleware to all playlist routes
 
     // Get all playlists for user
-    .get('/', async ({ getUserId, db }) => {
-        const userId = await getUserId();
-
+    .get('/', async ({ userId, db }) => {
         const playlists = await db.getMany(
             'SELECT id, name, url, username, password, is_active, created_at FROM playlists WHERE user_id = $1 ORDER BY created_at DESC',
             [userId]
@@ -37,52 +23,29 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
         };
     })
 
-    // Create new playlist
-    .guard({
-        beforeHandle: async ({ getUserId, db, set }) => {
-            const userId = await getUserId();
-            if (!userId) {
-                set.status = 401;
-                return {
-                    success: false,
-                    message: 'Unauthorized - Invalid or missing authentication token',
-                    data: null
-                };
-            }
+    // Create new playlist - requires active subscription
+    .use(userContextMiddleware)
+    .use(activeSubscriptionMiddleware)
+    .post('/', async ({ body, userId, user, db }) => {
+        // Check playlist count against plan limit (plan already loaded in middleware)
+        const playlistCount = await db.getOne(
+            'SELECT COUNT(*) as count FROM playlists WHERE user_id = $1 AND is_active = true',
+            [userId]
+        );
 
-            // Check if user has an active or trialing subscription
-            const subscription = await db.getOne(
-                'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\')',
-                [userId]
-            );
-
-            if (!subscription) {
-                set.status = 403;
-                return {
-                    success: false,
-                    message: 'Active subscription required. Please subscribe to a plan to access this feature.',
-                    data: null
-                };
-            }
+        const maxPlaylists = user.subscription?.plan?.max_playlists;
+        if (maxPlaylists && maxPlaylists !== -1 && parseInt(playlistCount.count) >= maxPlaylists) {
+            throw new Error(`Playlist limit reached. Your plan allows ${maxPlaylists} playlists.`);
         }
-    })
-    .post('/', async ({ body, getUserId, db }) => {
-        const userId = await getUserId();
 
-        const { name, url, username, password } = body;
-
-        // Create playlist (password stored as plain text)
+        // Create playlist (password encryption should be handled at a different layer)
         const playlist = await db.insert('playlists', {
             user_id: userId,
-            name,
-            url,
-            username,
-            password,
-            is_active: true
+            name: body.name,
+            url: body.url,
+            username: body.username,
+            password: body.password // Note: In production, this should be encrypted
         });
-
-        // Don't return encrypted password
-        delete playlist.password;
 
         return {
             success: true,
@@ -93,21 +56,17 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
         body: createPlaylistSchema
     })
 
-    // Get playlist details
-    .get('/:id', async ({ params, getUserId, db }) => {
-        const userId = await getUserId();
-        const playlistId = params.id;
-
+    // Get single playlist
+    .get('/:id', async ({ params, userId, db }) => {
         const playlist = await db.getOne(
             'SELECT * FROM playlists WHERE id = $1 AND user_id = $2',
-            [playlistId, userId]
+            [params.id, userId]
         );
 
         if (!playlist) {
             throw new Error('Playlist not found');
         }
 
-        // Password is already in plain text
         return {
             success: true,
             message: null,
@@ -118,27 +77,18 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     })
 
     // Update playlist
-    .patch('/:id', async ({ params, body, getUserId, db }) => {
-        const userId = await getUserId();
-        const playlistId = params.id;
-
+    .put('/:id', async ({ params, body, userId, db }) => {
         // Verify ownership
-        const exists = await db.getOne(
+        const existing = await db.getOne(
             'SELECT id FROM playlists WHERE id = $1 AND user_id = $2',
-            [playlistId, userId]
+            [params.id, userId]
         );
 
-        if (!exists) {
+        if (!existing) {
             throw new Error('Playlist not found');
         }
 
-        // Use body directly as it's already validated
-        const updateData = body;
-
-        const playlist = await db.update('playlists', playlistId, updateData);
-
-        // Don't return encrypted password
-        delete playlist.password;
+        const playlist = await db.update('playlists', params.id, body);
 
         return {
             success: true,
@@ -151,18 +101,19 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     })
 
     // Delete playlist
-    .delete('/:id', async ({ params, getUserId, db }) => {
-        const userId = await getUserId();
-        const playlistId = params.id;
-
-        const result = await db.query(
-            'DELETE FROM playlists WHERE id = $1 AND user_id = $2 RETURNING id',
-            [playlistId, userId]
+    .delete('/:id', async ({ params, userId, db }) => {
+        // Verify ownership
+        const existing = await db.getOne(
+            'SELECT id FROM playlists WHERE id = $1 AND user_id = $2',
+            [params.id, userId]
         );
 
-        if (result.rowCount === 0) {
+        if (!existing) {
             throw new Error('Playlist not found');
         }
+
+        // Soft delete
+        await db.update('playlists', params.id, { is_active: false });
 
         return {
             success: true,

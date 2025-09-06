@@ -1,36 +1,20 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
+import { authMiddleware, profileContextMiddleware } from '../middleware/auth.js';
 import { updateProgressSchema } from '../utils/schemas.js';
 
 export const progressRoutes = new Elysia({ prefix: '/progress' })
     .use(authPlugin)
     .use(databasePlugin)
-    .guard({
-        beforeHandle: async ({ getUserId, set }) => {
-            const userId = await getUserId();
-            if (!userId) {
-                set.status = 401;
-                return {
-                    success: false,
-                    message: 'Unauthorized - Invalid or missing authentication token',
-                    data: null
-                };
-            }
-        }
-    })
+    .use(authMiddleware) // Apply auth middleware to all progress routes
+    .use(profileContextMiddleware) // Apply profile context to all progress routes
 
     // Get watch progress for current profile
-    .get('/', async ({ getCurrentProfileId, db, query }) => {
-        const profileId = await getCurrentProfileId();
-
-        if (!profileId) {
-            throw new Error('No profile selected. Please select a profile first.');
-        }
-
+    .get('/', async ({ profile, db, query }) => {
         // Build query
         let sqlQuery = 'SELECT * FROM watch_progress WHERE profile_id = $1';
-        const params = [profileId];
+        const params = [profile.id];
 
         if (query.type) {
             sqlQuery += ' AND item_type = $2';
@@ -62,132 +46,96 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
     })
 
     // Update watch progress
-    .put('/', async ({ body, getCurrentProfileId, getUserId, db }) => {
-        const profileId = await getCurrentProfileId();
-        const userId = await getUserId();
+    .put('/', async ({ body, profile, db }) => {
+        const {
+            item_id,
+            item_type,
+            progress_seconds,
+            duration_seconds,
+            series_id,
+            season_number,
+            episode_number,
+            metadata
+        } = body;
 
-        const validatedData = body;
+        // Calculate if completed (95% watched)
+        const completed = (progress_seconds / duration_seconds) >= 0.95;
 
-        if (!profileId) {
-            throw new Error('No profile selected. Please select a profile first.');
-        }
+        // Upsert progress record
+        const progress = await db.query(`
+            INSERT INTO watch_progress (
+                profile_id, item_id, item_type, progress_seconds, 
+                duration_seconds, completed, series_id, season_number, 
+                episode_number, metadata, last_watched
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+            ON CONFLICT (profile_id, item_id) 
+            DO UPDATE SET 
+                progress_seconds = $4,
+                duration_seconds = $5,
+                completed = $6,
+                metadata = $10,
+                last_watched = CURRENT_TIMESTAMP
+            RETURNING *
+        `, [
+            profile.id,
+            item_id,
+            item_type,
+            progress_seconds,
+            duration_seconds,
+            completed,
+            series_id,
+            season_number,
+            episode_number,
+            metadata || {}
+        ]);
 
-        // Verify profile belongs to user
-        const profile = await db.getOne(
-            'SELECT user_id FROM profiles WHERE id = $1',
-            [profileId]
-        );
-
-        if (!profile || profile.user_id !== userId) {
-            throw new Error('Invalid profile');
-        }
-
-        const { item_id, item_type, progress_seconds, duration_seconds, completed, metadata } = validatedData;
-
-        // Check if progress exists
-        const existing = await db.getOne(
-            'SELECT id FROM watch_progress WHERE profile_id = $1 AND item_id = $2',
-            [profileId, item_id]
-        );
-
-        if (existing) {
-            // Update existing progress
-            const updateData = {
-                progress_seconds,
-                last_watched: new Date().toISOString()
-            };
-
-            if (duration_seconds !== undefined) updateData.duration_seconds = duration_seconds;
-            if (completed !== undefined) updateData.completed = completed;
-            if (metadata !== undefined) updateData.metadata = metadata;
-
-            const progress = await db.update('watch_progress', existing.id, updateData);
-            return {
-                success: true,
-                message: 'Progress updated successfully',
-                data: progress
-            };
-        } else {
-            // Create new progress
-            const progress = await db.insert('watch_progress', {
-                profile_id: profileId,
-                item_id,
-                item_type,
-                progress_seconds,
-                duration_seconds: duration_seconds || null,
-                completed: completed || false,
-                metadata: metadata || {},
-                last_watched: new Date().toISOString()
-            });
-
-            return {
-                success: true,
-                message: 'Progress created successfully',
-                data: progress
-            };
-        }
+        return {
+            success: true,
+            message: 'Progress updated',
+            data: progress.rows[0]
+        };
     }, {
         body: updateProgressSchema
     })
 
-    // Get progress for specific item
-    .get('/:itemId', async ({ params, getCurrentProfileId, db }) => {
-        const profileId = await getCurrentProfileId();
-        const itemId = params.itemId;
+    // Get continue watching
+    .get('/continue-watching', async ({ profile, db, query }) => {
+        const limit = query.limit || 20;
 
-        if (!profileId) {
-            throw new Error('No profile selected. Please select a profile first.');
-        }
-
-        const progress = await db.getOne(
-            'SELECT * FROM watch_progress WHERE profile_id = $1 AND item_id = $2',
-            [profileId, itemId]
-        );
-
-        if (!progress) {
-            return {
-                success: true,
-                message: null,
-                data: {
-                    item_id: itemId,
-                    progress_seconds: 0,
-                    completed: false
-                }
-            };
-        }
+        const items = await db.getMany(`
+            SELECT * FROM watch_progress 
+            WHERE profile_id = $1 
+                AND completed = false 
+                AND progress_seconds > 0
+            ORDER BY last_watched DESC
+            LIMIT $2
+        `, [profile.id, limit]);
 
         return {
             success: true,
             message: null,
-            data: progress
+            data: items
         };
     }, {
-        params: t.Object({
-            itemId: t.String()
+        query: t.Object({
+            limit: t.Optional(t.Number({ minimum: 1, maximum: 100 }))
         })
     })
 
-    // Delete progress
-    .delete('/:itemId', async ({ params, getCurrentProfileId, db }) => {
-        const profileId = await getCurrentProfileId();
-        const itemId = params.itemId;
-
-        if (!profileId) {
-            throw new Error('No profile selected. Please select a profile first.');
-        }
-
+    // Clear progress for item
+    .delete('/:itemId', async ({ params, profile, db }) => {
         const result = await db.query(
             'DELETE FROM watch_progress WHERE profile_id = $1 AND item_id = $2 RETURNING id',
-            [profileId, itemId]
+            [profile.id, params.itemId]
         );
 
         if (result.rowCount === 0) {
-            throw new Error('Progress not found');
+            throw new Error('Progress record not found');
         }
 
         return {
             success: true,
-            message: 'Progress deleted successfully',
+            message: 'Progress cleared',
             data: null
         };
     }, {
