@@ -244,8 +244,6 @@ export const serializers = {
                 price: plan.price_monthly,
                 price_annual: plan.price_annual,
                 max_profiles: plan.max_profiles,
-                max_playlists: plan.max_playlists,
-                max_favorites: plan.max_favorites,
                 trial_days: plan.trial_days,
                 cine_party: plan.cine_party,
                 cine_party_voice_chat: plan.cine_party_voice_chat,
@@ -253,7 +251,6 @@ export const serializers = {
                 record_live_tv: plan.record_live_tv,
                 download_offline_viewing: plan.download_offline_viewing,
                 parental_controls: plan.parental_controls,
-                multi_screen_viewing: plan.multi_screen_viewing,
                 support_level: plan.support_level
             },
             currentPeriodEnd: subscription.current_period_end,

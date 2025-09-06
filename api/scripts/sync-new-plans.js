@@ -23,8 +23,6 @@ const newPlans = [
         annualPrice: 7999, // $79.99 in cents
         metadata: {
             max_profiles: '1',
-            max_playlists: '0',
-            max_favorites: '0',
             trial_days: '7',
             cine_party: 'false',
             cine_party_voice_chat: 'false',
@@ -32,7 +30,6 @@ const newPlans = [
             record_live_tv: 'false',
             download_offline_viewing: 'false',
             parental_controls: 'true',
-            multi_screen_viewing: '1',
             support_level: 'email'
         }
     },
@@ -43,8 +40,6 @@ const newPlans = [
         annualPrice: 14999, // $149.99 in cents
         metadata: {
             max_profiles: '5',
-            max_playlists: '0',
-            max_favorites: '0',
             trial_days: '7',
             cine_party: 'true',
             cine_party_voice_chat: 'true',
@@ -52,7 +47,6 @@ const newPlans = [
             record_live_tv: 'true',
             download_offline_viewing: 'true',
             parental_controls: 'true',
-            multi_screen_viewing: '1',
             support_level: 'priority_24_7'
         }
     }
@@ -203,19 +197,16 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     price_monthly = $4,
                     price_annual = $5,
                     max_profiles = $6,
-                    max_playlists = $7,
-                    max_favorites = $8,
-                    trial_days = $9,
-                    cine_party = $10,
-                    cine_party_voice_chat = $11,
-                    sync_data_across_devices = $12,
-                    record_live_tv = $13,
-                    download_offline_viewing = $14,
-                    parental_controls = $15,
-                    multi_screen_viewing = $16,
-                    support_level = $17,
+                    trial_days = $7,
+                    cine_party = $8,
+                    cine_party_voice_chat = $9,
+                    sync_data_across_devices = $10,
+                    record_live_tv = $11,
+                    download_offline_viewing = $12,
+                    parental_controls = $13,
+                    support_level = $14,
                     updated_at = NOW()
-                WHERE name = $18
+                WHERE name = $15
             `, [
                 productId,
                 monthlyPriceId,
@@ -223,8 +214,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 plan.monthlyPrice / 100,
                 plan.annualPrice / 100,
                 parseInt(plan.metadata.max_profiles),
-                parseInt(plan.metadata.max_playlists),
-                parseInt(plan.metadata.max_favorites),
                 parseInt(plan.metadata.trial_days),
                 plan.metadata.cine_party === 'true',
                 plan.metadata.cine_party_voice_chat === 'true',
@@ -232,7 +221,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 plan.metadata.record_live_tv === 'true',
                 plan.metadata.download_offline_viewing === 'true',
                 plan.metadata.parental_controls === 'true',
-                parseInt(plan.metadata.multi_screen_viewing),
                 plan.metadata.support_level,
                 plan.name
             ]);
@@ -249,8 +237,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     price_monthly,
                     price_annual,
                     max_profiles,
-                    max_playlists,
-                    max_favorites,
                     trial_days,
                     cine_party,
                     cine_party_voice_chat,
@@ -258,12 +244,11 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     record_live_tv,
                     download_offline_viewing,
                     parental_controls,
-                    multi_screen_viewing,
                     support_level,
                     is_active,
                     created_at,
                     updated_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
                 RETURNING id
             `, [
                 plan.name,
@@ -273,8 +258,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 plan.monthlyPrice / 100,
                 plan.annualPrice / 100,
                 parseInt(plan.metadata.max_profiles),
-                parseInt(plan.metadata.max_playlists),
-                parseInt(plan.metadata.max_favorites),
                 parseInt(plan.metadata.trial_days),
                 plan.metadata.cine_party === 'true',
                 plan.metadata.cine_party_voice_chat === 'true',
@@ -282,7 +265,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 plan.metadata.record_live_tv === 'true',
                 plan.metadata.download_offline_viewing === 'true',
                 plan.metadata.parental_controls === 'true',
-                parseInt(plan.metadata.multi_screen_viewing),
                 plan.metadata.support_level,
                 true
             ]);

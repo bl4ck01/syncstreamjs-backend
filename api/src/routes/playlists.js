@@ -42,27 +42,7 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
 
         const { name, url, username, password } = body;
 
-        // Get user's plan limits
-        const userPlan = await db.getOne(`
-      SELECT 
-        COALESCE(p.max_playlists, 1) as max_playlists
-      FROM users u
-      LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
-      LEFT JOIN plans p ON s.plan_id = p.id
-      WHERE u.id = $1
-    `, [userId]);
-
-        const maxPlaylists = userPlan?.max_playlists || 1;
-
-        // Check current playlist count
-        const playlistCount = await db.getOne(
-            'SELECT COUNT(*) as count FROM playlists WHERE user_id = $1',
-            [userId]
-        );
-
-        if (maxPlaylists !== -1 && parseInt(playlistCount.count) >= maxPlaylists) {
-            throw new Error(`Plan limit reached. Maximum playlists: ${maxPlaylists}`);
-        }
+        // Note: Playlists feature is available to all users without limits
 
         // Create playlist (password stored as plain text)
         const playlist = await db.insert('playlists', {

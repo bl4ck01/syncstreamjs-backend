@@ -77,27 +77,7 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
             throw new Error('Invalid profile');
         }
 
-        // Get user's plan limits
-        const userPlan = await db.getOne(`
-      SELECT 
-        COALESCE(p.max_favorites, 50) as max_favorites
-      FROM users u
-      LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
-      LEFT JOIN plans p ON s.plan_id = p.id
-      WHERE u.id = $1
-    `, [userId]);
-
-        const maxFavorites = userPlan?.max_favorites || 50;
-
-        // Check current favorites count
-        const favoritesCount = await db.getOne(
-            'SELECT COUNT(*) as count FROM favorites WHERE profile_id = $1',
-            [profileId]
-        );
-
-        if (maxFavorites !== -1 && parseInt(favoritesCount.count) >= maxFavorites) {
-            throw new Error(`Plan limit reached. Maximum favorites: ${maxFavorites}`);
-        }
+        // Note: Favorites feature is available to all users without limits
 
         // Try to insert favorite (will fail if duplicate)
         try {

@@ -28,8 +28,6 @@ CREATE TABLE IF NOT EXISTS plans (
     billing_interval VARCHAR(50) DEFAULT 'month',
     billing_interval_count INTEGER DEFAULT 1,
     max_profiles INTEGER DEFAULT 1,
-    max_playlists INTEGER DEFAULT 1,
-    max_favorites INTEGER DEFAULT 50,
     trial_days INTEGER DEFAULT 3,
     -- Feature columns
     cine_party BOOLEAN DEFAULT FALSE,
@@ -38,7 +36,6 @@ CREATE TABLE IF NOT EXISTS plans (
     record_live_tv BOOLEAN DEFAULT FALSE,
     download_offline_viewing BOOLEAN DEFAULT FALSE,
     parental_controls BOOLEAN DEFAULT TRUE,
-    multi_screen_viewing INTEGER DEFAULT 1,
     support_level VARCHAR(50) DEFAULT 'email',
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -463,8 +460,6 @@ INSERT INTO plans (
     price_monthly, 
     price_annual,
     max_profiles, 
-    max_playlists, 
-    max_favorites,
     trial_days,
     cine_party,
     cine_party_voice_chat,
@@ -472,12 +467,11 @@ INSERT INTO plans (
     record_live_tv,
     download_offline_viewing,
     parental_controls,
-    multi_screen_viewing,
     support_level
 )
 VALUES 
-    ('Basic', 'price_basic_monthly', 'price_basic_annual', 7.99, 79.99, 1, 0, 0, 7, false, false, true, false, false, true, 1, 'email'),
-    ('Family', 'price_family_monthly', 'price_family_annual', 14.99, 149.99, 5, 0, 0, 7, true, true, true, true, true, true, 1, 'priority_24_7')
+    ('Basic', 'price_basic_monthly', 'price_basic_annual', 7.99, 79.99, 1, 7, false, false, true, false, false, true, 'email'),
+    ('Family', 'price_family_monthly', 'price_family_annual', 14.99, 149.99, 5, 7, true, true, true, true, true, true, 'priority_24_7')
 ON CONFLICT (stripe_price_id) DO NOTHING;
 
 -- Insert default admin user

@@ -71,8 +71,6 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
                 s.stripe_price_id,
                 p.name as plan_name,
                 p.max_profiles,
-                p.max_playlists,
-                p.max_favorites,
                 p.price_monthly
             FROM users u
             LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing', 'canceled', 'past_due')
@@ -192,9 +190,7 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
                     trial_end: user.trial_end,
                     plan_name: user.plan_name,
                     plan_limits: {
-                        max_profiles: user.max_profiles,
-                        max_playlists: user.max_playlists,
-                        max_favorites: user.max_favorites
+                        max_profiles: user.max_profiles
                     },
                     price_monthly: user.price_monthly
                 },
