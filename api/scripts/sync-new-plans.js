@@ -19,8 +19,8 @@ const newPlans = [
     {
         name: 'Basic',
         description: 'Perfect for individuals who want to enjoy IPTV',
-        monthlyPrice: 799, // $7.99 in cents
-        annualPrice: 7999, // $79.99 in cents
+        monthlyPrice: 299, // $2.99 in cents
+        annualPrice: 2999, // $29.99 in cents
         metadata: {
             max_profiles: '1',
             trial_days: '7',
@@ -36,8 +36,8 @@ const newPlans = [
     {
         name: 'Family',
         description: 'Ideal for families with multiple users and premium features',
-        monthlyPrice: 1499, // $14.99 in cents
-        annualPrice: 14999, // $149.99 in cents
+        monthlyPrice: 1099, // $10.99 in cents
+        annualPrice: 10999, // $109.99 in cents
         metadata: {
             max_profiles: '5',
             trial_days: '7',
