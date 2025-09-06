@@ -5,19 +5,22 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CheckIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { createCheckoutSession } from "@/server/actions";
+import { useRouter } from "next/navigation";
 
 export default function Pricing_04({ plans = [] }) {
     const [billPlan, setBillPlan] = useState("monthly");
+    const router = useRouter();
 
     return (
         <div className="relative flex flex-col items-center justify-center max-w-7xl py-12 px-4 mx-auto min-h-screen">
             <div className="flex flex-col items-center justify-center max-w-3xl mx-auto">
                 <div className="flex flex-col items-center text-center max-w-2xl mx-auto">
-                    <motion.h2
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                        className="text-3xl md:text-4xl lg:text-5xl font-bold text-white"
+                                    <motion.h2
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="text-4xl md:text-5xl lg:text-6xl font-bold text-white"
                     >
                         Choose Your Plan
                     </motion.h2>
@@ -79,15 +82,16 @@ export default function Pricing_04({ plans = [] }) {
                 "grid w-full pt-8 gap-4 lg:gap-6 max-w-6xl mx-auto",
                 plans.length === 3 ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2"
             )}>
-                {plans.map((plan, idx) => (
-                    <Plan key={plan.id} plan={plan} billPlan={billPlan} index={idx} />
-                ))}
+                            {plans.map((plan, idx) => (
+                <Plan key={plan.id} plan={plan} billPlan={billPlan} index={idx} router={router} />
+            ))}
             </div>
         </div>
     );
 }
 
-const Plan = ({ plan, billPlan, index }) => {
+const Plan = ({ plan, billPlan, index, router }) => {
+    const [isLoading, setIsLoading] = useState(false);
     // Debug: Log the values being passed to NumberFlow
     const currentPrice = billPlan === "monthly" ? Number(plan.price_monthly) : Number(plan.price_annual);
     console.log(`Plan: ${plan.name}, BillPlan: ${billPlan}, Price: ${currentPrice}, Monthly: ${plan.price_monthly}, Annual: ${plan.price_annual}`);
@@ -97,30 +101,15 @@ const Plan = ({ plan, billPlan, index }) => {
         const features = [];
 
         // Profiles
-        if (plan.max_profiles === -1) {
-            features.push("Unlimited profiles");
+        if (plan.max_profiles === 1) {
+            features.push("1 user profile");
         } else {
-            features.push(`Up to ${plan.max_profiles} profiles`);
+            features.push(`Up to ${plan.max_profiles} user profiles`);
         }
-
-        // Playlists
-        if (plan.max_playlists === -1) {
-            features.push("Unlimited playlists");
-        } else {
-            features.push(`Up to ${plan.max_playlists} playlists`);
-        }
-
-        // Favorites
-        if (plan.max_favorites === -1) {
-            features.push("Unlimited favorites");
-        }
-
-        // Multi-screen viewing
-        features.push(`${plan.multi_screen_viewing} simultaneous ${plan.multi_screen_viewing === 1 ? 'screen' : 'screens'}`);
 
         // Feature flags
         if (plan.cine_party) {
-            features.push(plan.cine_party_voice_chat ? "CineParty with voice chat" : "CineParty (watch together)");
+            features.push(plan.cine_party_voice_chat ? "Watch party with voice chat" : "Watch party feature");
         }
 
         if (plan.record_live_tv) {
@@ -136,7 +125,7 @@ const Plan = ({ plan, billPlan, index }) => {
         }
 
         if (plan.sync_data_across_devices) {
-            features.push("Sync across devices");
+            features.push("Sync across all devices");
         }
 
         // Support level
@@ -155,6 +144,23 @@ const Plan = ({ plan, billPlan, index }) => {
         return features;
     };
 
+    const handleSubscribe = async () => {
+        setIsLoading(true);
+        try {
+            const response = await createCheckoutSession(plan.id);
+            if (response.success && response.data?.checkout_url) {
+                window.location.href = response.data.checkout_url;
+            } else {
+                console.error('Failed to create checkout session:', response.message);
+                // Handle error - could show toast notification here
+            }
+        } catch (error) {
+            console.error('Error creating checkout session:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -171,9 +177,9 @@ const Plan = ({ plan, billPlan, index }) => {
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.3 }}
-                            className="text-4xl font-bold text-white flex items-baseline justify-center gap-1"
+                            className="text-6xl md:text-7xl font-bold text-white flex items-baseline justify-center gap-2"
                         >
-                            <span className="text-2xl">$</span>
+                            <span className="text-4xl md:text-5xl">$</span>
                             <NumberFlow
                                 value={currentPrice}
                                 format={{
@@ -193,7 +199,7 @@ const Plan = ({ plan, billPlan, index }) => {
                                     animate={{ opacity: 1, x: 0 }}
                                     exit={{ opacity: 0, x: 10 }}
                                     transition={{ duration: 0.2 }}
-                                    className="text-lg text-gray-400"
+                                    className="text-2xl md:text-3xl text-gray-400"
                                 >
                                     /{billPlan === "monthly" ? "mo" : "yr"}
                                 </motion.span>
@@ -201,14 +207,17 @@ const Plan = ({ plan, billPlan, index }) => {
                         </motion.div>
                     </div>
 
-                    <p className="text-xs text-gray-500 mb-4">Perfect for getting started</p>
+                    <h3 className="text-2xl font-semibold text-white mb-2">{plan.name}</h3>
+                    <p className="text-sm text-gray-400 mb-6">{plan.name === 'Basic' ? 'Perfect for individual users' : 'Ideal for families'}</p>
 
                     {/* CTA Button */}
                     <Button
-                        size="default"
-                        className="w-full bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg transition-all duration-200"
+                        size="lg"
+                        className="w-full bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg transition-all duration-200 text-lg py-6"
+                        onClick={handleSubscribe}
+                        disabled={isLoading}
                     >
-                        {plan.trial_days > 0 ? `Start ${plan.trial_days}-day free trial` : "Get Started"}
+                        {isLoading ? 'Processing...' : (plan.trial_days > 0 ? `Start ${plan.trial_days}-day free trial` : "Get Started")}
                     </Button>
 
                     <AnimatePresence mode="wait">
@@ -231,18 +240,18 @@ const Plan = ({ plan, billPlan, index }) => {
 
                 {/* Features list */}
                 <div className="px-6 pb-6 flex-grow">
-                    <h4 className="text-sm text-white mb-3">Includes:</h4>
-                    <ul className="space-y-2">
+                    <h4 className="text-base font-medium text-white mb-4">What's included:</h4>
+                    <ul className="space-y-3">
                         {getFeatures().map((feature, index) => (
                             <motion.li
                                 key={index}
                                 initial={{ opacity: 0, x: -10 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ duration: 0.3, delay: 0.4 + index * 0.03 }}
-                                className="flex items-center gap-2"
+                                className="flex items-center gap-3"
                             >
-                                <CheckIcon className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                <span className="text-xs text-gray-300">{feature}</span>
+                                <CheckIcon className="w-5 h-5 text-green-500 flex-shrink-0" />
+                                <span className="text-sm text-gray-300">{feature}</span>
                             </motion.li>
                         ))}
                     </ul>
