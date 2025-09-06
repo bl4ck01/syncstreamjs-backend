@@ -17,17 +17,17 @@ export default async function PricingPage() {
         <SparklesCore
           id="tsparticlesfullpage"
           background="transparent"
-          minSize={0.6}
-          maxSize={1.4}
-          particleDensity={100}
+          minSize={0.4}
+          maxSize={1.0}
+          particleDensity={80}
           className="w-full h-full"
           particleColor="#e11d48" // rose-600 color
-          speed={1}
+          speed={0.8}
         />
       </div>
       
       {/* Content */}
-      <div className="relative z-10 container mx-auto px-4">
+      <div className="relative z-10">
         <Pricing_04 plans={plans} />
       </div>
     </div>
