@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { GoogleIcon } from "@/components/icons";
+import { register } from "@/server/actions";
 
 const registerSchema = z
   .object({
@@ -40,12 +41,26 @@ export default function Register() {
   const onSubmit = async (data) => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log("Register data:", data);
-      // router.push("/dashboard");
+      const response = await register(data.fullName, data.email, data.password);
+      
+      if (response.success) {
+        // If shouldRedirect is true, redirect to the specified path
+        if (response.shouldRedirect && response.redirectTo) {
+          router.push(response.redirectTo);
+        }
+      } else {
+        // Handle error - show error message
+        form.setError("root", {
+          type: "manual",
+          message: response.message || "Registration failed. Please try again."
+        });
+      }
     } catch (error) {
       console.error("Register error:", error);
+      form.setError("root", {
+        type: "manual",
+        message: "An unexpected error occurred. Please try again."
+      });
     } finally {
       setIsLoading(false);
     }
@@ -148,6 +163,12 @@ export default function Register() {
             >
               {isLoading ? "Creating account..." : "Create Account"}
             </Button>
+            
+            {form.formState.errors.root && (
+              <p className="text-red-400 text-sm text-center mt-2">
+                {form.formState.errors.root.message}
+              </p>
+            )}
           </form>
         </Form>
 
