@@ -18,14 +18,14 @@ console.log('🔄 Starting New Plans Sync to Stripe...');
 const newPlans = [
     {
         name: 'Basic',
-        description: 'Perfect for individuals who want to enjoy IPTV with essential features',
-        monthlyPrice: 499, // $4.99 in cents
-        annualPrice: 4999, // $49.99 in cents
+        description: 'Perfect for individuals who want to enjoy IPTV',
+        monthlyPrice: 799, // $7.99 in cents
+        annualPrice: 7999, // $79.99 in cents
         metadata: {
-            max_profiles: '3',
-            max_playlists: '2',
-            max_favorites: '-1',
-            trial_days: '3',
+            max_profiles: '1',
+            max_playlists: '0',
+            max_favorites: '0',
+            trial_days: '7',
             cine_party: 'false',
             cine_party_voice_chat: 'false',
             sync_data_across_devices: 'true',
@@ -37,42 +37,22 @@ const newPlans = [
         }
     },
     {
-        name: 'Pro',
-        description: 'Ideal for families who want advanced features and multiple device access',
-        monthlyPrice: 999, // $9.99 in cents
-        annualPrice: 9999, // $99.99 in cents
-        metadata: {
-            max_profiles: '6',
-            max_playlists: '5',
-            max_favorites: '-1',
-            trial_days: '3',
-            cine_party: 'true',
-            cine_party_voice_chat: 'false',
-            sync_data_across_devices: 'true',
-            record_live_tv: 'true',
-            download_offline_viewing: 'true',
-            parental_controls: 'true',
-            multi_screen_viewing: '2',
-            support_level: 'email_chat'
-        }
-    },
-    {
-        name: 'Ultimate',
-        description: 'The complete package with unlimited access and premium features',
+        name: 'Family',
+        description: 'Ideal for families with multiple users and premium features',
         monthlyPrice: 1499, // $14.99 in cents
         annualPrice: 14999, // $149.99 in cents
         metadata: {
-            max_profiles: '-1',
-            max_playlists: '-1',
-            max_favorites: '-1',
-            trial_days: '3',
+            max_profiles: '5',
+            max_playlists: '0',
+            max_favorites: '0',
+            trial_days: '7',
             cine_party: 'true',
             cine_party_voice_chat: 'true',
             sync_data_across_devices: 'true',
             record_live_tv: 'true',
             download_offline_viewing: 'true',
             parental_controls: 'true',
-            multi_screen_viewing: '5',
+            multi_screen_viewing: '1',
             support_level: 'priority_24_7'
         }
     }
