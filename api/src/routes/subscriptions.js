@@ -11,6 +11,37 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
     .use(authPlugin)
     .use(databasePlugin)
 
+    // Get public plans (no authentication required, no Stripe info)
+    .get('/plans/public', async ({ db }) => {
+        const plans = await db.getMany(`
+            SELECT 
+                id,
+                name,
+                price_monthly,
+                price_annual,
+                price_lifetime,
+                max_profiles,
+                trial_days,
+                cine_party,
+                sync_data_across_devices,
+                record_live_tv,
+                download_offline_viewing,
+                parental_controls,
+                support_level,
+                is_lifetime,
+                is_limited_offer
+            FROM plans 
+            WHERE is_active = TRUE 
+            ORDER BY price_monthly
+        `, []);
+
+        return {
+            success: true,
+            message: null,
+            data: plans
+        };
+    })
+
     // Get current subscription - OPTIMIZED using middleware
     .use(authMiddleware)
     .use(userContextMiddleware)
@@ -64,37 +95,6 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             'SELECT * FROM plans WHERE is_active = TRUE ORDER BY price_monthly',
             []
         );
-
-        return {
-            success: true,
-            message: null,
-            data: plans
-        };
-    })
-
-    // Get public plans (no authentication required, no Stripe info)
-    .get('/plans/public', async ({ db }) => {
-        const plans = await db.getMany(`
-            SELECT 
-                id,
-                name,
-                price_monthly,
-                price_annual,
-                price_lifetime,
-                max_profiles,
-                trial_days,
-                cine_party,
-                sync_data_across_devices,
-                record_live_tv,
-                download_offline_viewing,
-                parental_controls,
-                support_level,
-                is_lifetime,
-                is_limited_offer
-            FROM plans 
-            WHERE is_active = TRUE 
-            ORDER BY price_monthly
-        `, []);
 
         return {
             success: true,
