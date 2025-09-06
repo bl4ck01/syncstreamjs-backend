@@ -73,6 +73,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 name,
                 price_monthly,
                 price_annual,
+                price_lifetime,
                 max_profiles,
                 trial_days,
                 cine_party,
@@ -80,7 +81,9 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 record_live_tv,
                 download_offline_viewing,
                 parental_controls,
-                support_level
+                support_level,
+                is_lifetime,
+                is_limited_offer
             FROM plans 
             WHERE is_active = TRUE 
             ORDER BY price_monthly
@@ -117,7 +120,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             };
         }
 
-        const { plan_id } = body;
+        const { plan_id, billing_period } = body;
 
         // Get the plan by ID or name
         const plan = await getPlanByIdOrName(db, plan_id);
@@ -173,33 +176,53 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
         const successUrl = process.env.STRIPE_SUCCESS_URL || `${process.env.API_URL || 'http://localhost:3000'}/api/v1/webhooks/success?session_id={CHECKOUT_SESSION_ID}`;
         const cancelUrl = process.env.STRIPE_CANCEL_URL || `${process.env.API_URL || 'http://localhost:3000'}/api/v1/webhooks/cancel?session_id={CHECKOUT_SESSION_ID}`;
 
+        // Determine the correct Stripe price ID based on billing period
+        const stripePriceId = billing_period === 'annually' ? plan.stripe_price_id_annual : plan.stripe_price_id;
+
+        if (!stripePriceId) {
+            set.status = 400;
+            return {
+                success: false,
+                message: `No ${billing_period} pricing available for plan: ${plan.name}`,
+                data: null
+            };
+        }
+
         // Log checkout started
-        console.log(`[SUBSCRIPTION] Checkout started for user ${userId}, plan: ${plan.name}`);
+        console.log(`[SUBSCRIPTION] Checkout started for user ${userId}, plan: ${plan.name}, billing: ${billing_period}`);
 
         // Create Stripe checkout session
-        const session = await stripe.checkout.sessions.create({
+        const sessionConfig = {
             customer: stripeCustomerId,
             line_items: [
                 {
-                    price: plan.stripe_price_id,
+                    price: stripePriceId,
                     quantity: 1
                 }
             ],
-            mode: 'subscription',
             success_url: successUrl,
             cancel_url: cancelUrl,
-            subscription_data: {
+            metadata: {
+                user_id: userId,
+                plan_id: plan.id
+            }
+        };
+
+        // For lifetime plans, use payment mode; for regular plans, use subscription mode
+        if (plan.is_lifetime) {
+            sessionConfig.mode = 'payment';
+        } else {
+            sessionConfig.mode = 'subscription';
+            sessionConfig.subscription_data = {
                 ...(trialEligible && { trial_period_days: 3 }),
                 metadata: {
                     user_id: userId,
                     plan_id: plan.id
                 }
-            },
-            metadata: {
-                user_id: userId,
-                plan_id: plan.id
-            }
-        });
+            };
+        }
+
+        const session = await stripe.checkout.sessions.create(sessionConfig);
 
         return {
             success: true,

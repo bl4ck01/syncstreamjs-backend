@@ -23,7 +23,6 @@ CREATE TABLE IF NOT EXISTS plans (
     stripe_product_id VARCHAR(255),
     stripe_price_id VARCHAR(255) UNIQUE,
     stripe_price_id_annual VARCHAR(255) UNIQUE,
-    stripe_price_id_lifetime VARCHAR(255) UNIQUE,
     price_monthly DECIMAL(10,2),
     price_annual DECIMAL(10,2),
     price_lifetime DECIMAL(10,2),
@@ -39,7 +38,8 @@ CREATE TABLE IF NOT EXISTS plans (
     parental_controls BOOLEAN DEFAULT TRUE,
     support_level VARCHAR(50) DEFAULT 'email',
     is_active BOOLEAN DEFAULT TRUE,
-    is_lifetime_available BOOLEAN DEFAULT FALSE,
+    is_lifetime BOOLEAN DEFAULT FALSE,
+    is_limited_offer BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -161,7 +161,6 @@ CREATE INDEX IF NOT EXISTS idx_credits_transactions_user_id ON credits_transacti
 CREATE INDEX IF NOT EXISTS idx_plans_stripe_product_id ON plans(stripe_product_id);
 CREATE INDEX IF NOT EXISTS idx_plans_stripe_price_id ON plans(stripe_price_id);
 CREATE INDEX IF NOT EXISTS idx_plans_stripe_price_id_annual ON plans(stripe_price_id_annual);
-CREATE INDEX IF NOT EXISTS idx_plans_stripe_price_id_lifetime ON plans(stripe_price_id_lifetime);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_subscription_id ON subscriptions(stripe_subscription_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_price_id ON subscriptions(stripe_price_id);
 
@@ -460,7 +459,6 @@ INSERT INTO plans (
     name, 
     stripe_price_id, 
     stripe_price_id_annual,
-    stripe_price_id_lifetime,
     price_monthly, 
     price_annual,
     price_lifetime,
@@ -472,11 +470,13 @@ INSERT INTO plans (
     download_offline_viewing,
     parental_controls,
     support_level,
-    is_lifetime_available
+    is_lifetime,
+    is_limited_offer
 )
 VALUES 
-    ('Basic', 'price_basic_monthly', 'price_basic_annual', NULL, 2.99, 24.00, NULL, 1, 7, false, true, false, false, true, 'email', false),
-    ('Family', 'price_family_monthly', 'price_family_annual', 'price_family_lifetime', 5.99, 48.00, 44.99, 5, 7, true, true, true, true, true, 'priority_24_7', true)
+    ('Basic', 'price_basic_monthly', 'price_basic_annual', 2.99, 24.00, NULL, 1, 7, false, true, false, false, true, 'email', false, false),
+    ('Family', 'price_family_monthly', 'price_family_annual', 5.99, 48.00, NULL, 5, 7, true, true, true, true, true, 'priority_24_7', false, false),
+    ('Lifetime Family', 'price_lifetime_family', NULL, NULL, NULL, 44.99, 5, 0, true, true, true, true, true, 'priority_24_7', true, true)
 ON CONFLICT (stripe_price_id) DO NOTHING;
 
 -- Insert default admin user

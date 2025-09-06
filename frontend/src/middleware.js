@@ -50,15 +50,14 @@ export async function middleware(request) {
             return res;
         }
 
-        // If token is valid and user visits /auth/login -> redirect to home
+        // If token is valid and user visits auth pages -> redirect appropriately
         if (pathname === '/auth/login' || pathname === '/auth/register') {
-            return NextResponse.redirect(new URL('/', request.url));
-        }
-        else if (validToken.user?.subscription_status !== 'none') {
-            return NextResponse.redirect(new URL('/', request.url));
-        }
-        else if (validToken.user?.subscription_status === 'none') {
-            return NextResponse.redirect(new URL('/pricing', request.url));
+            // Check subscription status to determine where to redirect
+            if (validToken.user?.subscription_status === 'none') {
+                return NextResponse.redirect(new URL('/pricing', request.url));
+            } else {
+                return NextResponse.redirect(new URL('/', request.url));
+            }
         }
 
     }
@@ -70,6 +69,7 @@ export const config = {
     matcher: [
         '/auth/login',
         '/auth/register',
+        '/pricing',
         '/',
         '/(app)/:path*',
     ],

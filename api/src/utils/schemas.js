@@ -75,7 +75,8 @@ export const updateProgressSchema = t.Object({
 
 // Subscription schemas
 export const checkoutSchema = t.Object({
-    plan_id: t.String()
+    plan_id: t.String(),
+    billing_period: t.String()
 });
 
 export const changePlanSchema = t.Object({

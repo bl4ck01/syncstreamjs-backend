@@ -14,7 +14,8 @@ import {
     Zap,
     Star,
     Timer,
-    Crown
+    Crown,
+    Sparkles
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -30,15 +31,17 @@ const featureIcons = {
     parentalControls: Shield,
     syncDevices: Smartphone,
     support: Headphones,
-    trial: Timer
+    trial: Timer,
+    lifetime: Crown
 };
 
-export default function PricingEnhanced({ plans = [] }) {
+export default function PricingLifetime({ plans = [] }) {
     const [billPlan, setBillPlan] = useState("monthly");
     const router = useRouter();
 
-    // Check if lifetime plan is available
-    const hasLifetimePlan = plans.some(plan => plan.is_lifetime_available);
+    // Separate lifetime plans from regular plans
+    const regularPlans = plans.filter(plan => !plan.is_lifetime);
+    const lifetimePlans = plans.filter(plan => plan.is_lifetime);
 
     return (
         <div className="relative flex flex-col items-center justify-center max-w-7xl py-12 px-4 mx-auto min-h-screen">
@@ -62,7 +65,7 @@ export default function PricingEnhanced({ plans = [] }) {
                     </motion.p>
                 </div>
 
-                {/* Custom Animated Toggle */}
+                {/* Custom Animated Toggle for regular plans only */}
                 <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -102,70 +105,70 @@ export default function PricingEnhanced({ plans = [] }) {
                                 />
                             )}
                         </button>
-                        {hasLifetimePlan && (
-                            <button
-                                onClick={() => setBillPlan("lifetime")}
-                                className={cn(
-                                    "relative z-10 px-5 py-1.5 rounded-full text-sm font-medium transition-colors duration-200 flex items-center gap-1",
-                                    billPlan === "lifetime" ? "text-white" : "text-gray-400 hover:text-gray-300"
-                                )}
-                            >
-                                <Zap className="w-3 h-3" />
-                                Lifetime
-                                {billPlan === "lifetime" && (
-                                    <motion.div
-                                        layoutId="toggle-indicator"
-                                        className="absolute inset-0 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full -z-10"
-                                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                                    />
-                                )}
-                            </button>
-                        )}
                     </div>
                 </motion.div>
             </div>
 
+            {/* Limited Time Badge if lifetime plans exist
+            {lifetimePlans.length > 0 && (
+                <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.3 }}
+                    className="mt-8 mb-4 text-center"
+                >
+                    <div className="inline-flex items-center gap-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/50 rounded-full px-4 py-2">
+                        <Timer className="w-4 h-4 text-yellow-400" />
+                        <span className="text-yellow-400 font-semibold text-sm">LIMITED TIME OFFER AVAILABLE</span>
+                        <Sparkles className="w-4 h-4 text-yellow-400" />
+                    </div>
+                </motion.div>
+            )} */}
+
             <div className={cn(
                 "grid w-full pt-8 gap-4 lg:gap-6 max-w-6xl mx-auto",
-                plans.length === 3 ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2"
+                plans.length === 3 ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
             )}>
-                {plans.map((plan, idx) => (
-                    <Plan key={plan.id} plan={plan} billPlan={billPlan} index={idx} router={router} />
+                {/* Show regular plans first */}
+                {regularPlans.map((plan, idx) => (
+                    <Plan key={plan.id} plan={plan} billPlan={billPlan} index={idx} router={router} isLifetime={false} />
+                ))}
+                
+                {/* Show lifetime plans after regular plans */}
+                {lifetimePlans.map((plan, idx) => (
+                    <Plan key={plan.id} plan={plan} billPlan={billPlan} index={regularPlans.length + idx} router={router} isLifetime={true} />
                 ))}
             </div>
         </div>
     );
 }
 
-const Plan = ({ plan, billPlan, index, router }) => {
+const Plan = ({ plan, billPlan, index, router, isLifetime }) => {
     const [isLoading, setIsLoading] = useState(false);
 
-    // Check if this plan has lifetime and we're showing lifetime
-    const isLifetimePlan = plan.is_lifetime_available && billPlan === "lifetime";
-    const isLifetimeEligible = plan.is_lifetime_available;
-
     // Calculate prices
-    const monthlyPrice = Number(plan.price_monthly);
-    const yearlyPrice = Number(plan.price_annual);
+    const monthlyPrice = Number(plan.price_monthly || 0);
+    const yearlyPrice = Number(plan.price_annual || 0);
     const lifetimePrice = Number(plan.price_lifetime || 0);
     const yearlyMonthlyEquivalent = yearlyPrice / 12;
 
     // Current price logic
     let currentPrice;
     let priceLabel;
-    let showStrikethrough = false;
+    let billingText;
     
-    if (billPlan === "lifetime" && isLifetimeEligible) {
+    if (isLifetime) {
         currentPrice = lifetimePrice;
-        priceLabel = "one-time";
-        showStrikethrough = true; // Show monthly price as strikethrough
+        priceLabel = "";
+        billingText = "One-time payment - Never pay again!";
     } else if (billPlan === "annually") {
         currentPrice = yearlyMonthlyEquivalent;
         priceLabel = "/mo";
-        showStrikethrough = yearlyMonthlyEquivalent < monthlyPrice;
+        billingText = `Billed $${yearlyPrice.toFixed(2)} annually`;
     } else {
         currentPrice = monthlyPrice;
         priceLabel = "/mo";
+        billingText = "Billed monthly";
     }
 
     // Transform features based on plan capabilities
@@ -209,13 +212,13 @@ const Plan = ({ plan, billPlan, index, router }) => {
         features.push({ icon: featureIcons.support, text: supportLevels[plan.support_level] || 'Email support' });
 
         // Trial days
-        if (plan.trial_days > 0 && !isLifetimePlan) {
+        if (plan.trial_days > 0 && !isLifetime) {
             features.push({ icon: featureIcons.trial, text: `${plan.trial_days}-day free trial` });
         }
 
         // Lifetime special feature
-        if (isLifetimePlan) {
-            features.push({ icon: Crown, text: "Lifetime access - Never pay again!" });
+        if (isLifetime) {
+            features.push({ icon: featureIcons.lifetime, text: "Lifetime access - Never pay again!" });
         }
 
         return features;
@@ -224,7 +227,7 @@ const Plan = ({ plan, billPlan, index, router }) => {
     const handleSubscribe = async () => {
         setIsLoading(true);
         try {
-            const response = await createCheckoutSession(plan.id);
+            const response = await createCheckoutSession(plan.id, billPlan);
             if (response.success && response.data?.checkout_url) {
                 window.location.href = response.data.checkout_url;
             } else {
@@ -237,6 +240,8 @@ const Plan = ({ plan, billPlan, index, router }) => {
         }
     };
 
+    // No need to calculate savings for lifetime plan
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -246,12 +251,12 @@ const Plan = ({ plan, billPlan, index, router }) => {
         >
             <div className={cn(
                 "relative flex flex-col h-full rounded-2xl backdrop-blur-sm border overflow-hidden transition-all duration-300",
-                isLifetimePlan 
-                    ? "bg-gradient-to-br from-yellow-900/20 via-orange-900/20 to-red-900/20 border-yellow-500/50 hover:border-yellow-400 shadow-2xl" 
+                isLifetime 
+                    ? "bg-gradient-to-br from-yellow-900/20 via-orange-900/20 to-red-900/20 border-yellow-500/50 hover:border-yellow-400 shadow-2xl scale-105" 
                     : "bg-zinc-900/30 border-zinc-800 hover:border-rose-500/50"
             )}>
                 {/* Limited Time Badge for Lifetime Plan */}
-                {isLifetimePlan && (
+                {isLifetime && (
                     <motion.div
                         initial={{ y: -20, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
@@ -265,26 +270,18 @@ const Plan = ({ plan, billPlan, index, router }) => {
                     </motion.div>
                 )}
 
+
                 {/* Plan content */}
-                <div className="relative p-6 text-center">
+                <div className="relative p-6 text-center z-10">
                     {/* Price */}
                     <div className="mb-1">
-                        {showStrikethrough && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="text-2xl text-gray-500 line-through mb-2"
-                            >
-                                ${monthlyPrice.toFixed(2)}/mo
-                            </motion.div>
-                        )}
                         <motion.div
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.3 }}
                             className={cn(
                                 "text-6xl md:text-7xl font-bold flex items-baseline justify-center gap-2",
-                                isLifetimePlan ? "text-yellow-400" : "text-white"
+                                isLifetime ? "text-yellow-400" : "text-white"
                             )}
                         >
                             <span className="text-4xl md:text-5xl">$</span>
@@ -300,44 +297,28 @@ const Plan = ({ plan, billPlan, index, router }) => {
                                 opacityTiming={{ duration: 400, easing: 'ease-in' }}
                                 respectMotionPreference={false}
                             />
-                            <AnimatePresence mode="wait">
-                                <motion.span
-                                    key={billPlan}
-                                    initial={{ opacity: 0, x: -10 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: 10 }}
-                                    transition={{ duration: 0.2 }}
-                                    className="text-2xl md:text-3xl text-gray-400"
-                                >
-                                    {priceLabel === "one-time" ? "" : priceLabel}
-                                </motion.span>
-                            </AnimatePresence>
+                            {priceLabel && (
+                                <span className="text-2xl md:text-3xl text-gray-400">
+                                    {priceLabel}
+                                </span>
+                            )}
                         </motion.div>
-                        {priceLabel === "one-time" && (
-                            <motion.p
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                className="text-yellow-400 font-semibold mt-1"
-                            >
-                                One-time payment
-                            </motion.p>
-                        )}
                     </div>
 
                     <h3 className={cn(
                         "text-2xl font-semibold mb-2",
-                        isLifetimePlan ? "text-yellow-400" : "text-white"
+                        isLifetime ? "text-yellow-400" : "text-white"
                     )}>
                         {plan.name}
-                        {isLifetimePlan && (
+                        {isLifetime && (
                             <span className="ml-2 inline-flex">
-                                <Star className="w-5 h-5 fill-yellow-400" />
+                                <Crown className="w-6 h-6 fill-yellow-400" />
                             </span>
                         )}
                     </h3>
                     <p className="text-sm text-gray-400 mb-6">
-                        {isLifetimePlan 
-                            ? "Get lifetime access at an incredible price!" 
+                        {isLifetime 
+                            ? "Get lifetime access to all premium features!" 
                             : (plan.name === 'Basic' ? 'Perfect for individual users' : 'Ideal for families')
                         }
                     </p>
@@ -346,41 +327,24 @@ const Plan = ({ plan, billPlan, index, router }) => {
                     <Button
                         size="lg"
                         className={cn(
-                            "w-full font-medium rounded-lg transition-all duration-200 text-lg py-6",
-                            isLifetimePlan 
-                                ? "bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black animate-pulse"
+                            "w-full font-medium rounded-lg transition-all duration-200 text-lg py-6 relative z-10",
+                            isLifetime 
+                                ? "bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black"
                                 : "bg-rose-600 hover:bg-rose-700 text-white"
                         )}
                         onClick={handleSubscribe}
                         disabled={isLoading}
                     >
                         {isLoading ? 'Processing...' : (
-                            isLifetimePlan 
+                            isLifetime 
                                 ? "Get Lifetime Access Now!" 
                                 : (plan.trial_days > 0 ? `Start ${plan.trial_days}-day free trial` : "Get Started")
                         )}
                     </Button>
 
-                    <AnimatePresence mode="wait">
-                        <motion.span
-                            key={billPlan}
-                            initial={{ y: 20, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            exit={{ y: -20, opacity: 0 }}
-                            transition={{ duration: 0.2, ease: "easeOut" }}
-                            className="text-sm text-center text-muted-foreground mt-3 mx-auto block"
-                        >
-                            {billPlan === "monthly" ? (
-                                "Billed monthly"
-                            ) : billPlan === "annually" ? (
-                                `Billed $${yearlyPrice.toFixed(2)} annually`
-                            ) : isLifetimePlan ? (
-                                <span className="text-yellow-400 font-medium">Save ${(monthlyPrice * 12 - lifetimePrice).toFixed(2)} vs yearly!</span>
-                            ) : (
-                                "Select lifetime option above"
-                            )}
-                        </motion.span>
-                    </AnimatePresence>
+                    <p className="text-sm text-center text-muted-foreground mt-3">
+                        {billingText}
+                    </p>
                 </div>
 
                 {/* Features list */}
@@ -399,7 +363,7 @@ const Plan = ({ plan, billPlan, index, router }) => {
                                 >
                                     <IconComponent className={cn(
                                         "w-5 h-5 flex-shrink-0",
-                                        isLifetimePlan && feature.icon === Crown 
+                                        isLifetime && feature.icon === Crown 
                                             ? "text-yellow-400" 
                                             : "text-green-500"
                                     )} />
@@ -410,43 +374,9 @@ const Plan = ({ plan, billPlan, index, router }) => {
                     </ul>
                 </div>
 
-                {/* Lifetime plan special effects */}
-                {isLifetimePlan && (
-                    <>
-                        {/* Animated border gradient */}
-                        <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-yellow-500 via-orange-500 to-red-500 opacity-20 blur-xl animate-pulse" />
-                        
-                        {/* Corner sparkles */}
-                        <motion.div
-                            animate={{
-                                scale: [1, 1.2, 1],
-                                opacity: [0.5, 1, 0.5],
-                            }}
-                            transition={{
-                                duration: 2,
-                                repeat: Infinity,
-                                ease: "easeInOut"
-                            }}
-                            className="absolute top-4 right-4"
-                        >
-                            <Star className="w-6 h-6 text-yellow-400 fill-yellow-400" />
-                        </motion.div>
-                        <motion.div
-                            animate={{
-                                scale: [1, 1.2, 1],
-                                opacity: [0.5, 1, 0.5],
-                            }}
-                            transition={{
-                                duration: 2,
-                                repeat: Infinity,
-                                ease: "easeInOut",
-                                delay: 0.5
-                            }}
-                            className="absolute bottom-4 left-4"
-                        >
-                            <Star className="w-6 h-6 text-yellow-400 fill-yellow-400" />
-                        </motion.div>
-                    </>
+                {/* Lifetime plan subtle golden accent */}
+                {isLifetime && (
+                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-yellow-500/10 via-orange-500/5 to-yellow-500/10 -z-10" />
                 )}
             </div>
         </motion.div>

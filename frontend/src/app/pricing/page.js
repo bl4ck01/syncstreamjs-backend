@@ -1,5 +1,5 @@
 import React from 'react';
-import PricingEnhanced from '@/components/ui/pricing-enhanced';
+import PricingLifetime from '@/components/ui/pricing-lifetime';
 import { getPlans } from '@/server/actions';
 import { SparklesCore } from '@/components/ui/sparkles';
 
@@ -28,7 +28,7 @@ export default async function PricingPage() {
 
       {/* Content */}
       <div className="relative z-10">
-        <PricingEnhanced plans={plans} />
+        <PricingLifetime plans={plans} />
       </div>
     </div>
   );

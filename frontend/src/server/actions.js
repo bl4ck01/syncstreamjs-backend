@@ -95,7 +95,7 @@ export async function register(full_name, email, password) {
             path: '/',
             maxAge: 60 * 60 * 24 * 7
         });
-        return { success: true, message: 'Inscription réussie', shouldRedirect: true, redirectTo: '/' };
+        return { success: true, message: 'Inscription réussie', shouldRedirect: true, redirectTo: '/pricing' };
     }
     return data;
 }
@@ -125,10 +125,13 @@ export async function getPlans() {
     return data;
 }
 
-export async function createCheckoutSession(planId) {
+export async function createCheckoutSession(planId, billingPeriod = 'monthly') {
     const data = await performRequest('/subscriptions/checkout', {
         method: 'POST',
-        body: JSON.stringify({ planId })
+        body: JSON.stringify({ 
+            plan_id: planId,
+            billing_period: billingPeriod
+        })
     });
     return data;
 }
