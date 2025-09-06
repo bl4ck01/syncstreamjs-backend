@@ -42,7 +42,6 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             price_monthly: user.subscription.plan.price_monthly,
             price_annual: user.subscription.plan.price_annual,
             max_profiles: user.subscription.plan.max_profiles,
-            max_playlists: user.subscription.plan.max_playlists,
             trial_days: user.subscription.plan.trial_days,
             cine_party: user.subscription.plan.features.cine_party,
             sync_data_across_devices: user.subscription.plan.features.sync_data_across_devices,

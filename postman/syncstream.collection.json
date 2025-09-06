@@ -502,7 +502,7 @@
         {
           "name": "Update Playlist",
           "request": {
-            "method": "PATCH",
+            "method": "PUT",
             "header": [
               {
                 "key": "Authorization",
@@ -687,6 +687,29 @@
           }
         },
         {
+          "name": "Get Continue Watching",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/progress/continue-watching?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["progress", "continue-watching"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Delete Progress",
           "request": {
             "method": "DELETE",
@@ -739,6 +762,18 @@
               "raw": "{{baseUrl}}/subscriptions/plans",
               "host": ["{{baseUrl}}"],
               "path": ["subscriptions", "plans"]
+            }
+          }
+        },
+        {
+          "name": "Get Public Plans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/plans/public",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "plans", "public"]
             }
           }
         },
@@ -857,7 +892,7 @@
           }
         },
         {
-          "name": "Get Billing Portal",
+          "name": "Get Subscription History",
           "request": {
             "method": "GET",
             "header": [
@@ -867,9 +902,26 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/subscriptions/billing-portal",
+              "raw": "{{baseUrl}}/subscriptions/history",
               "host": ["{{baseUrl}}"],
-              "path": ["subscriptions", "billing-portal"]
+              "path": ["subscriptions", "history"]
+            }
+          }
+        },
+        {
+          "name": "Get Billing Portal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/portal",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "portal"]
             }
           }
         }
@@ -1026,6 +1078,40 @@
           }
         },
         {
+          "name": "Get Admin Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/dashboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "dashboard"]
+            }
+          }
+        },
+        {
+          "name": "Impersonate User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{userId}}/impersonate",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "users", "{{userId}}", "impersonate"]
+            }
+          }
+        },
+        {
           "name": "Add Credits to User",
           "request": {
             "method": "POST",
@@ -1176,9 +1262,53 @@
           }
         },
         {
+          "name": "Get Credits",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resellerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reseller/credits",
+              "host": ["{{baseUrl}}"],
+              "path": ["reseller", "credits"]
+            }
+          }
+        },
+        {
+          "name": "Get Credit Transactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{resellerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/reseller/credits/transactions?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["reseller", "credits", "transactions"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Update Plan",
           "request": {
-            "method": "PATCH",
+            "method": "PUT",
             "header": [
               {
                 "key": "Authorization",
@@ -1319,6 +1449,40 @@
           }
         },
         {
+          "name": "Subscription Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/subscriptions",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics", "subscriptions"]
+            }
+          }
+        },
+        {
+          "name": "Usage Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/usage",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics", "usage"]
+            }
+          }
+        },
+        {
           "name": "Export Analytics Data",
           "request": {
             "method": "GET",
@@ -1352,6 +1516,18 @@
     {
       "name": "Webhooks",
       "item": [
+        {
+          "name": "Test Webhook",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/test",
+              "host": ["{{baseUrl}}"],
+              "path": ["webhooks", "test"]
+            }
+          }
+        },
         {
           "name": "Stripe Webhook",
           "request": {

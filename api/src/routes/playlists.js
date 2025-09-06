@@ -27,16 +27,7 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     .use(userContextMiddleware)
     .use(activeSubscriptionMiddleware)
     .post('/', async ({ body, userId, user, db }) => {
-        // Check playlist count against plan limit (plan already loaded in middleware)
-        const playlistCount = await db.getOne(
-            'SELECT COUNT(*) as count FROM playlists WHERE user_id = $1 AND is_active = true',
-            [userId]
-        );
-
-        const maxPlaylists = user.subscription?.plan?.max_playlists;
-        if (maxPlaylists && maxPlaylists !== -1 && parseInt(playlistCount.count) >= maxPlaylists) {
-            throw new Error(`Playlist limit reached. Your plan allows ${maxPlaylists} playlists.`);
-        }
+        // No playlist limits - users can create unlimited playlists
 
         // Create playlist (password encryption should be handled at a different layer)
         const playlist = await db.insert('playlists', {

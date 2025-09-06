@@ -49,7 +49,6 @@ export const userContextMiddleware = new Elysia({ name: 'user-context-middleware
                     p.price_annual,
                     p.price_lifetime,
                     p.max_profiles,
-                    p.max_playlists,
                     p.trial_days,
                     p.cine_party,
                     p.sync_data_across_devices,
@@ -83,7 +82,6 @@ export const userContextMiddleware = new Elysia({ name: 'user-context-middleware
                 ls.price_annual,
                 ls.price_lifetime,
                 ls.max_profiles,
-                ls.max_playlists,
                 ls.trial_days,
                 ls.cine_party,
                 ls.sync_data_across_devices,
@@ -132,7 +130,6 @@ export const userContextMiddleware = new Elysia({ name: 'user-context-middleware
                     price_annual: user.price_annual,
                     price_lifetime: user.price_lifetime,
                     max_profiles: user.max_profiles,
-                    max_playlists: user.max_playlists,
                     trial_days: user.trial_days,
                     features: {
                         cine_party: user.cine_party,
