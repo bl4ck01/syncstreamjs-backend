@@ -41,13 +41,6 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             credits_balance: 0
         });
 
-        // Create default profile
-        await db.insert('profiles', {
-            user_id: user.id,
-            name: 'Default',
-            is_kids_profile: false
-        });
-
         // Sign JWT token
         const token = await signToken(user.id, user.email);
 

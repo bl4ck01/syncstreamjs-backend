@@ -1,12 +1,13 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
+import { subscriptionValidatorPlugin } from '../middleware/subscriptionValidator.js';
 
 export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .use(authPlugin)
     .use(databasePlugin)
     .guard({
-        beforeHandle: async ({ getUserId, set }) => {
+        beforeHandle: async ({ getUserId, db, set }) => {
             const userId = await getUserId();
             if (!userId) {
                 set.status = 401;
@@ -21,7 +22,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .get('/', async ({ getUserId, db }) => {
         const userId = await getUserId();
 
-        const profiles = await db.getAll(
+        const profiles = await db.getMany(
             'SELECT id, name, avatar_url, is_kids_profile, created_at FROM profiles WHERE user_id = $1 AND is_active = true ORDER BY created_at',
             [userId]
         );
@@ -33,23 +34,51 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     })
 
     // Create new profile
+    .guard({
+        beforeHandle: async ({ getUserId, db, set }) => {
+            const userId = await getUserId();
+            if (!userId) {
+                set.status = 401;
+                return {
+                    success: false,
+                    message: 'Unauthorized - Invalid or missing authentication token',
+                    data: null
+                };
+            }
+
+            // Check if user has an active or trialing subscription
+            const subscription = await db.getOne(
+                'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\')',
+                [userId]
+            );
+
+            if (!subscription) {
+                set.status = 403;
+                return {
+                    success: false,
+                    message: 'Active subscription required. Please subscribe to a plan to access this feature.',
+                    data: null
+                };
+            }
+        }
+    })
     .post('/', async ({ body, getUserId, db }) => {
         const userId = await getUserId();
 
         // Body is already validated by Elysia
         const { name, avatar_url, parental_pin, is_kids_profile } = body;
 
-        // Get user's plan limits
+        // Get user's plan limits (subscription validator ensures user has active subscription)
         const userPlan = await db.getOne(`
       SELECT 
-        COALESCE(p.max_profiles, 1) as max_profiles
+        p.max_profiles
       FROM users u
-      LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
-      LEFT JOIN plans p ON s.plan_id = p.id
+      JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
+      JOIN plans p ON s.plan_id = p.id
       WHERE u.id = $1
     `, [userId]);
 
-        const maxProfiles = userPlan?.max_profiles || 1;
+        const maxProfiles = userPlan?.max_profiles;
 
         // Check current profile count
         const profileCount = await db.getOne(
@@ -210,7 +239,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         const profileId = params.id;
 
         // Check ownership and ensure at least one profile remains
-        const profiles = await db.getAll(
+        const profiles = await db.getMany(
             'SELECT id FROM profiles WHERE user_id = $1 AND is_active = true',
             [userId]
         );

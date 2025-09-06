@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
+import { subscriptionValidatorPlugin } from '../middleware/subscriptionValidator.js';
 import { createPlaylistSchema, updatePlaylistSchema, idParamSchema } from '../utils/schemas.js';
 
 export const playlistRoutes = new Elysia({ prefix: '/playlists' })
@@ -37,12 +38,38 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     })
 
     // Create new playlist
+    .guard({
+        beforeHandle: async ({ getUserId, db, set }) => {
+            const userId = await getUserId();
+            if (!userId) {
+                set.status = 401;
+                return {
+                    success: false,
+                    message: 'Unauthorized - Invalid or missing authentication token',
+                    data: null
+                };
+            }
+
+            // Check if user has an active or trialing subscription
+            const subscription = await db.getOne(
+                'SELECT * FROM subscriptions WHERE user_id = $1 AND status IN (\'active\', \'trialing\')',
+                [userId]
+            );
+
+            if (!subscription) {
+                set.status = 403;
+                return {
+                    success: false,
+                    message: 'Active subscription required. Please subscribe to a plan to access this feature.',
+                    data: null
+                };
+            }
+        }
+    })
     .post('/', async ({ body, getUserId, db }) => {
         const userId = await getUserId();
 
         const { name, url, username, password } = body;
-
-        // Note: Playlists feature is available to all users without limits
 
         // Create playlist (password stored as plain text)
         const playlist = await db.insert('playlists', {
