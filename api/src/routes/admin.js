@@ -1,22 +1,17 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
+import { authMiddleware, userContextMiddleware, roleMiddleware } from '../middleware/auth.js';
 import { adminAddCreditsSchema, createPlanSchema, updatePlanSchema, idParamSchema, searchPaginationSchema } from '../utils/schemas.js';
 
 export const adminRoutes = new Elysia({ prefix: '/admin' })
     .use(authPlugin)
     .use(databasePlugin)
-    .guard({
-        beforeHandle: async ({ getUser, set }) => {
-            const user = await getUser();
-            if (!user || user.role !== 'admin') {
-                set.status = 403;
-                throw new Error('Forbidden: Admin access required');
-            }
-        }
-    })
+    .use(authMiddleware)
+    .use(userContextMiddleware)
+    .use(roleMiddleware(['admin'])) // Apply role check to all admin routes
 
-    // Get all users
+    // Get all users - OPTIMIZED with better pagination
     .get('/users', async ({ db, query }) => {
         const { page = 1, limit = 20, search } = query;
         const offset = (page - 1) * limit;
@@ -55,27 +50,90 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
         query: searchPaginationSchema
     })
 
-    // Get user details with subscription
+    // Get user details with subscription - OPTIMIZED with single query
     .get('/users/:id', async ({ params, db }) => {
         const userId = params.id;
 
+        // Single query to get user with subscription and profiles
         const user = await db.getOne(`
+            WITH user_subscription AS (
+                SELECT 
+                    u.*,
+                    s.status as subscription_status,
+                    s.current_period_end,
+                    s.current_period_start,
+                    s.cancel_at_period_end,
+                    s.trial_end,
+                    s.stripe_subscription_id,
+                    s.stripe_price_id,
+                    p.name as plan_name,
+                    p.max_profiles,
+                    p.price_monthly
+                FROM users u
+                LEFT JOIN subscriptions s ON u.id = s.user_id 
+                    AND s.status IN ('active', 'trialing', 'canceled', 'past_due')
+                LEFT JOIN plans p ON s.plan_id = p.id
+                WHERE u.id = $1
+            ),
+            profile_stats AS (
+                SELECT 
+                    user_id,
+                    COUNT(*) as profile_count,
+                    json_agg(json_build_object(
+                        'id', id,
+                        'name', name,
+                        'avatar_url', avatar_url,
+                        'is_kids_profile', is_kids_profile,
+                        'created_at', created_at
+                    ) ORDER BY created_at) as profiles
+                FROM profiles
+                WHERE user_id = $1 AND is_active = true
+                GROUP BY user_id
+            ),
+            playlist_stats AS (
+                SELECT 
+                    user_id,
+                    COUNT(*) as playlist_count,
+                    json_agg(json_build_object(
+                        'id', id,
+                        'name', name,
+                        'url', url,
+                        'is_active', is_active,
+                        'created_at', created_at
+                    ) ORDER BY created_at) as playlists
+                FROM playlists
+                WHERE user_id = $1 AND is_active = true
+                GROUP BY user_id
+            ),
+            favorite_stats AS (
+                SELECT 
+                    p.user_id,
+                    COUNT(DISTINCT f.id) as favorite_count,
+                    json_object_agg(
+                        p.name, 
+                        COALESCE((
+                            SELECT COUNT(*) 
+                            FROM favorites f2 
+                            WHERE f2.profile_id = p.id
+                        ), 0)
+                    ) as favorites_by_profile
+                FROM profiles p
+                LEFT JOIN favorites f ON p.id = f.profile_id
+                WHERE p.user_id = $1 AND p.is_active = true
+                GROUP BY p.user_id
+            )
             SELECT 
-                u.*,
-                s.status as subscription_status,
-                s.current_period_end,
-                s.current_period_start,
-                s.cancel_at_period_end,
-                s.trial_end,
-                s.stripe_subscription_id,
-                s.stripe_price_id,
-                p.name as plan_name,
-                p.max_profiles,
-                p.price_monthly
-            FROM users u
-            LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing', 'canceled', 'past_due')
-            LEFT JOIN plans p ON s.plan_id = p.id
-            WHERE u.id = $1
+                us.*,
+                COALESCE(ps.profile_count, 0) as profile_count,
+                COALESCE(ps.profiles, '[]'::json) as profiles,
+                COALESCE(pls.playlist_count, 0) as playlist_count,
+                COALESCE(pls.playlists, '[]'::json) as playlists,
+                COALESCE(fs.favorite_count, 0) as favorite_count,
+                COALESCE(fs.favorites_by_profile, '{}'::json) as favorites_by_profile
+            FROM user_subscription us
+            LEFT JOIN profile_stats ps ON us.id = ps.user_id
+            LEFT JOIN playlist_stats pls ON us.id = pls.user_id
+            LEFT JOIN favorite_stats fs ON us.id = fs.user_id
         `, [userId]);
 
         if (!user) {
@@ -85,456 +143,230 @@ export const adminRoutes = new Elysia({ prefix: '/admin' })
         // Remove sensitive data
         delete user.password_hash;
 
-        // Get user's profiles
-        const profiles = await db.getMany(
-            'SELECT id, name, avatar_url, is_kids_profile, created_at FROM profiles WHERE user_id = $1 ORDER BY created_at',
-            [userId]
-        );
-
-        // Get user's playlists
-        const playlists = await db.getMany(
-            'SELECT id, name, url, username, is_active, created_at FROM playlists WHERE user_id = $1 ORDER BY created_at',
-            [userId]
-        );
-
-        // Get user's favorites count per profile
-        const favoritesStats = await db.getMany(`
-            SELECT 
-                p.id as profile_id,
-                p.name as profile_name,
-                COUNT(f.id) as favorites_count
-            FROM profiles p
-            LEFT JOIN favorites f ON p.id = f.profile_id
-            WHERE p.user_id = $1
-            GROUP BY p.id, p.name
-            ORDER BY p.created_at
-        `, [userId]);
-
-        // Get subscription history
-        const subscriptionHistory = await db.getMany(`
-            SELECT 
-                se.event_type,
-                se.created_at,
-                se.amount,
-                se.currency,
-                p.name as plan_name,
-                pp.name as previous_plan_name
-            FROM subscription_events se
-            LEFT JOIN plans p ON se.plan_id = p.id
-            LEFT JOIN plans pp ON se.previous_plan_id = pp.id
-            WHERE se.user_id = $1
-            ORDER BY se.created_at DESC
-            LIMIT 50
-        `, [userId]);
-
-        // Get credits transactions if user is a reseller
-        let creditsTransactions = [];
-        if (user.role === 'reseller') {
-            creditsTransactions = await db.getMany(`
-                SELECT 
-                    amount,
-                    balance_after,
-                    transaction_type,
-                    description,
-                    created_at
-                FROM credits_transactions
-                WHERE user_id = $1
-                ORDER BY created_at DESC
-                LIMIT 50
-            `, [userId]);
-        }
-
-        // Get clients if user is a reseller
-        let clients = [];
-        if (user.role === 'reseller') {
-            clients = await db.getMany(`
-                SELECT 
-                    u.id,
-                    u.email,
-                    u.full_name,
-                    u.created_at,
-                    s.status as subscription_status,
-                    p.name as plan_name
-                FROM users u
-                LEFT JOIN subscriptions s ON u.id = s.user_id AND s.status IN ('active', 'trialing')
-                LEFT JOIN plans p ON s.plan_id = p.id
-                WHERE u.parent_reseller_id = $1
-                ORDER BY u.created_at DESC
-            `, [userId]);
-        }
-
         return {
             success: true,
-            message: null,
-            data: {
-                // Basic user info
-                id: user.id,
-                email: user.email,
-                full_name: user.full_name,
-                role: user.role,
-                has_used_trial: user.has_used_trial,
-                credits_balance: user.credits_balance,
-                parent_reseller_id: user.parent_reseller_id,
-                stripe_customer_id: user.stripe_customer_id,
-                created_at: user.created_at,
-                updated_at: user.updated_at,
-                
-                // Current subscription info
-                subscription: {
-                    status: user.subscription_status,
-                    stripe_subscription_id: user.stripe_subscription_id,
-                    stripe_price_id: user.stripe_price_id,
-                    current_period_start: user.current_period_start,
-                    current_period_end: user.current_period_end,
-                    cancel_at_period_end: user.cancel_at_period_end,
-                    trial_end: user.trial_end,
-                    plan_name: user.plan_name,
-                    plan_limits: {
-                        max_profiles: user.max_profiles
-                    },
-                    price_monthly: user.price_monthly
-                },
-                
-                // Usage statistics
-                usage: {
-                    profiles_count: profiles.length,
-                    playlists_count: playlists.length,
-                    favorites_by_profile: favoritesStats
-                },
-                
-                // Detailed data
-                profiles,
-                playlists,
-                subscription_history: subscriptionHistory,
-                
-                // Reseller-specific data
-                ...(user.role === 'reseller' && {
-                    reseller_data: {
-                        credits_transactions: creditsTransactions,
-                        clients: clients,
-                        clients_count: clients.length
-                    }
-                })
-            }
+            data: user
         };
+    }, {
+        params: idParamSchema
     })
 
-    // Manage plans
+    // Plans management - Get all plans
     .get('/plans', async ({ db }) => {
         const plans = await db.getMany(
             'SELECT * FROM plans ORDER BY price_monthly',
             []
         );
 
-        return plans;
+        return {
+            success: true,
+            data: plans
+        };
     })
 
     // Create new plan
     .post('/plans', async ({ body, db }) => {
         const plan = await db.insert('plans', body);
-        return plan;
+
+        return {
+            success: true,
+            message: 'Plan created successfully',
+            data: plan
+        };
     }, {
         body: createPlanSchema
     })
 
     // Update plan
-    .patch('/plans/:id', async ({ params, body, db }) => {
+    .put('/plans/:id', async ({ params, body, db }) => {
         const plan = await db.update('plans', params.id, body);
+
         if (!plan) {
             throw new Error('Plan not found');
         }
-        return plan;
+
+        return {
+            success: true,
+            message: 'Plan updated successfully',
+            data: plan
+        };
     }, {
         params: idParamSchema,
         body: updatePlanSchema
     })
 
-    // Add credits to user (manual)
-    .post('/credits/add', async ({ body, db, getUser }) => {
-        const admin = await getUser();
+    // Delete plan (soft delete)
+    .delete('/plans/:id', async ({ params, db }) => {
+        const plan = await db.update('plans', params.id, { is_active: false });
+
+        if (!plan) {
+            throw new Error('Plan not found');
+        }
+
+        return {
+            success: true,
+            message: 'Plan deleted successfully'
+        };
+    }, {
+        params: idParamSchema
+    })
+
+    // Add credits to reseller - OPTIMIZED with transaction
+    .post('/credits/add', async ({ body, db }) => {
         const { user_id, amount, description } = body;
 
-        const result = await db.transaction(async (tx) => {
+        const result = await db.transaction(async (client) => {
             // Lock user row and get current balance
-            const user = await tx.query(
-                'SELECT id, credits_balance FROM users WHERE id = $1 FOR UPDATE',
+            const userResult = await client.query(
+                'SELECT credits_balance, role FROM users WHERE id = $1 FOR UPDATE',
                 [user_id]
             );
 
-            if (user.rows.length === 0) {
+            if (!userResult.rows[0]) {
                 throw new Error('User not found');
             }
 
-            const currentBalance = user.rows[0].credits_balance;
+            if (userResult.rows[0].role !== 'reseller') {
+                throw new Error('Credits can only be added to reseller accounts');
+            }
+
+            const currentBalance = userResult.rows[0].credits_balance;
             const newBalance = currentBalance + amount;
 
             // Update balance
-            await tx.query(
+            await client.query(
                 'UPDATE users SET credits_balance = $1 WHERE id = $2',
                 [newBalance, user_id]
             );
 
             // Record transaction
-            const transaction = await tx.query(`
-                INSERT INTO credits_transactions 
-                (user_id, amount, balance_after, transaction_type, description, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                RETURNING *
-            `, [
-                user_id,
-                amount,
-                newBalance,
-                'admin_add',
-                description || `Admin (${admin.email}) added ${amount} credits`,
-                { admin_id: admin.id, admin_email: admin.email }
-            ]);
+            const transaction = await client.query(
+                `INSERT INTO credits_transactions 
+                 (user_id, amount, type, description, balance_after)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING *`,
+                [
+                    user_id,
+                    amount,
+                    amount > 0 ? 'credit' : 'debit',
+                    description || `Manual ${amount > 0 ? 'credit' : 'debit'} by admin`,
+                    newBalance
+                ]
+            );
 
             return {
                 transaction: transaction.rows[0],
+                previous_balance: currentBalance,
                 new_balance: newBalance
             };
         });
 
-        return result;
+        return {
+            success: true,
+            message: 'Credits added successfully',
+            data: result
+        };
     }, {
         body: adminAddCreditsSchema
     })
 
-    // Get system statistics
-    .get('/stats', async ({ db }) => {
-        const stats = {};
-
-        // User stats
-        const userStats = await db.getOne(`
+    // Dashboard stats - OPTIMIZED with single query
+    .get('/dashboard', async ({ db }) => {
+        const stats = await db.getOne(`
+            WITH user_stats AS (
+                SELECT 
+                    COUNT(*) as total_users,
+                    COUNT(CASE WHEN role = 'reseller' THEN 1 END) as total_resellers,
+                    COUNT(CASE WHEN created_at >= NOW() - INTERVAL '30 days' THEN 1 END) as new_users_30d,
+                    COUNT(CASE WHEN has_used_trial THEN 1 END) as trial_users
+                FROM users
+            ),
+            subscription_stats AS (
+                SELECT 
+                    COUNT(*) as active_subscriptions,
+                    COUNT(CASE WHEN status = 'trialing' THEN 1 END) as trial_subscriptions,
+                    COUNT(CASE WHEN status = 'past_due' THEN 1 END) as past_due_subscriptions,
+                    SUM(CASE 
+                        WHEN p.price_monthly IS NOT NULL AND s.status = 'active' 
+                        THEN p.price_monthly 
+                        ELSE 0 
+                    END) as mrr
+                FROM subscriptions s
+                LEFT JOIN plans p ON s.plan_id = p.id
+                WHERE s.status IN ('active', 'trialing', 'past_due')
+            ),
+            revenue_stats AS (
+                SELECT 
+                    COUNT(*) as total_transactions,
+                    SUM(amount) as total_revenue_30d
+                FROM credits_transactions
+                WHERE created_at >= NOW() - INTERVAL '30 days' AND type = 'credit'
+            )
             SELECT 
-                COUNT(*) as total_users,
-                COUNT(CASE WHEN role = 'reseller' THEN 1 END) as total_resellers,
-                COUNT(CASE WHEN role = 'admin' THEN 1 END) as total_admins,
-                COUNT(CASE WHEN has_used_trial = TRUE THEN 1 END) as trials_used
-            FROM users
+                us.total_users,
+                us.total_resellers,
+                us.new_users_30d,
+                us.trial_users,
+                COALESCE(ss.active_subscriptions, 0) as active_subscriptions,
+                COALESCE(ss.trial_subscriptions, 0) as trial_subscriptions,
+                COALESCE(ss.past_due_subscriptions, 0) as past_due_subscriptions,
+                COALESCE(ss.mrr, 0) as mrr,
+                COALESCE(rs.total_transactions, 0) as total_transactions,
+                COALESCE(rs.total_revenue_30d, 0) as total_revenue_30d
+            FROM user_stats us
+            CROSS JOIN subscription_stats ss
+            CROSS JOIN revenue_stats rs
         `);
 
-        // Subscription stats
-        const subStats = await db.getOne(`
+        // Get recent activities
+        const recentActivities = await db.getMany(`
             SELECT 
-                COUNT(CASE WHEN status = 'active' THEN 1 END) as active_subscriptions,
-                COUNT(CASE WHEN status = 'trialing' THEN 1 END) as trial_subscriptions,
-                COUNT(CASE WHEN status = 'past_due' THEN 1 END) as past_due_subscriptions
-            FROM subscriptions
-        `);
-
-        // Revenue stats (simplified)
-        const revenueStats = await db.getOne(`
-            SELECT 
-                COUNT(DISTINCT s.user_id) as paying_users,
-                SUM(p.price_monthly) as mrr
-            FROM subscriptions s
-            JOIN plans p ON s.plan_id = p.id
-            WHERE s.status IN ('active', 'trialing') AND p.price_monthly > 0
-        `);
-
-        return {
-            users: {
-                total: parseInt(userStats.total_users),
-                resellers: parseInt(userStats.total_resellers),
-                admins: parseInt(userStats.total_admins),
-                trials_used: parseInt(userStats.trials_used)
-            },
-            subscriptions: {
-                active: parseInt(subStats.active_subscriptions),
-                trialing: parseInt(subStats.trial_subscriptions),
-                past_due: parseInt(subStats.past_due_subscriptions)
-            },
-            revenue: {
-                paying_users: parseInt(revenueStats.paying_users),
-                mrr: parseFloat(revenueStats.mrr || 0)
-            }
-        };
-    })
-
-    // Update user role
-    .patch('/users/:id/role', async ({ params, body, db }) => {
-        const { role } = body;
-
-        await db.query(
-            'UPDATE users SET role = $1 WHERE id = $2',
-            [role, params.id]
-        );
-
-        return { message: `User role updated to ${role}` };
-    }, {
-        params: idParamSchema,
-        body: t.Object({
-            role: t.Union([
-                t.Literal('user'),
-                t.Literal('reseller'),
-                t.Literal('admin')
-            ])
-        })
-    })
-
-    // Get subscription events
-    .get('/logs/subscriptions', async ({ query, db }) => {
-        const { 
-            page = 1, 
-            limit = 50, 
-            user_id,
-            subscription_id,
-            event_type,
-            plan_id,
-            start_date,
-            end_date
-        } = query;
-        
-        const offset = (page - 1) * limit;
-        let conditions = [];
-        let params = [];
-        let paramCount = 0;
-
-        if (user_id) {
-            conditions.push(`se.user_id = $${++paramCount}`);
-            params.push(user_id);
-        }
-        
-        if (subscription_id) {
-            conditions.push(`se.subscription_id = $${++paramCount}`);
-            params.push(subscription_id);
-        }
-        
-        if (event_type) {
-            conditions.push(`se.event_type = $${++paramCount}`);
-            params.push(event_type);
-        }
-        
-        if (plan_id) {
-            conditions.push(`(se.plan_id = $${++paramCount} OR se.previous_plan_id = $${paramCount})`);
-            params.push(plan_id);
-        }
-        
-        if (start_date) {
-            conditions.push(`se.created_at >= $${++paramCount}`);
-            params.push(new Date(start_date));
-        }
-        
-        if (end_date) {
-            conditions.push(`se.created_at <= $${++paramCount}`);
-            params.push(new Date(end_date));
-        }
-        
-        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        
-        // Get total count
-        const countResult = await db.getOne(
-            `SELECT COUNT(*) as total FROM subscription_events se ${whereClause}`,
-            params
-        );
-        
-        // Get events
-        params.push(limit);
-        params.push(offset);
-        
-        const events = await db.query(`
-            SELECT 
-                se.*,
-                u.email as user_email,
-                u.full_name as user_name,
+                'subscription' as type,
+                s.created_at,
+                u.email,
                 p.name as plan_name,
-                pp.name as previous_plan_name
-            FROM subscription_events se
-            LEFT JOIN users u ON se.user_id = u.id
-            LEFT JOIN plans p ON se.plan_id = p.id
-            LEFT JOIN plans pp ON se.previous_plan_id = pp.id
-            ${whereClause}
-            ORDER BY se.created_at DESC
-            LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
-        `, params);
-        
+                s.status
+            FROM subscriptions s
+            JOIN users u ON s.user_id = u.id
+            JOIN plans p ON s.plan_id = p.id
+            ORDER BY s.created_at DESC
+            LIMIT 10
+        `);
+
         return {
             success: true,
             data: {
-                events: events.rows,
-                total: parseInt(countResult.total),
-                page,
-                limit,
-                total_pages: Math.ceil(countResult.total / limit)
+                stats,
+                recent_activities: recentActivities
             }
         };
     })
 
-    // Get subscription analytics
-    .get('/analytics/subscriptions', async ({ query, db }) => {
-        const { days = 7 } = query;
-        
-        // For now, return empty analytics since we're not storing events in memory
-        const analytics = { rows: [] };
-        
-        // Calculate revenue and event summaries
-        const summary = {
-            total_revenue: 0,
-            total_events: 0,
-            events_by_type: {}
-        };
-        
-        analytics.rows.forEach(row => {
-            summary.total_events += parseInt(row.count);
-            summary.total_revenue += parseFloat(row.total_amount || 0);
-            
-            if (!summary.events_by_type[row.event_type]) {
-                summary.events_by_type[row.event_type] = {
-                    count: 0,
-                    revenue: 0
-                };
-            }
-            
-            summary.events_by_type[row.event_type].count += parseInt(row.count);
-            summary.events_by_type[row.event_type].revenue += parseFloat(row.total_amount || 0);
-        });
-        
-        return {
-            success: true,
-            data: {
-                summary,
-                daily_breakdown: analytics.rows,
-                period_days: days
-            }
-        };
-    })
-
-    // Get user activity logs
-    .get('/users/:id/activity', async ({ params, query, db }) => {
+    // Impersonate user (generate token)
+    .post('/users/:id/impersonate', async ({ params, db, signToken }) => {
         const userId = params.id;
-        const { type = 'all', limit = 100 } = query;
-        
-        let securityEvents = [];
-        let subscriptionEvents = [];
-        
-        if (type === 'all' || type === 'security') {
-            // Security events are not stored, only logged to console
-            securityEvents = [];
+
+        const user = await db.getOne(
+            'SELECT id, email FROM users WHERE id = $1',
+            [userId]
+        );
+
+        if (!user) {
+            throw new Error('User not found');
         }
-        
-        if (type === 'all' || type === 'subscription') {
-            // Get subscription events from database
-            const subscription = await db.query(`
-                SELECT * FROM subscription_events 
-                WHERE user_id = $1 
-                ORDER BY created_at DESC 
-                LIMIT $2
-            `, [userId, limit]);
-            subscriptionEvents = subscription.rows.map(e => ({ ...e, log_type: 'subscription' }));
-        }
-        
-        // Merge and sort by created_at
-        const allEvents = [...securityEvents, ...subscriptionEvents]
-            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-            .slice(0, limit);
-        
+
+        // Generate token for the user
+        const token = await signToken(user.id, user.email);
+
         return {
             success: true,
+            message: 'Impersonation token generated',
             data: {
-                user_id: userId,
-                events: allEvents,
-                total: allEvents.length
+                token,
+                user_id: user.id,
+                email: user.email
             }
         };
+    }, {
+        params: idParamSchema
     });
