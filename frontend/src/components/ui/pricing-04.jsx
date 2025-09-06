@@ -16,11 +16,11 @@ export default function Pricing_04({ plans = [] }) {
         <div className="relative flex flex-col items-center justify-center max-w-7xl py-12 px-4 mx-auto min-h-screen">
             <div className="flex flex-col items-center justify-center max-w-3xl mx-auto">
                 <div className="flex flex-col items-center text-center max-w-2xl mx-auto">
-                                    <motion.h2
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5 }}
-                    className="text-4xl md:text-5xl lg:text-6xl font-bold text-white"
+                    <motion.h2
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5 }}
+                        className="text-4xl md:text-5xl lg:text-6xl font-bold text-white"
                     >
                         Choose Your Plan
                     </motion.h2>
@@ -82,9 +82,9 @@ export default function Pricing_04({ plans = [] }) {
                 "grid w-full pt-8 gap-4 lg:gap-6 max-w-6xl mx-auto",
                 plans.length === 3 ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2"
             )}>
-                            {plans.map((plan, idx) => (
-                <Plan key={plan.id} plan={plan} billPlan={billPlan} index={idx} router={router} />
-            ))}
+                {plans.map((plan, idx) => (
+                    <Plan key={plan.id} plan={plan} billPlan={billPlan} index={idx} router={router} />
+                ))}
             </div>
         </div>
     );
@@ -92,9 +92,14 @@ export default function Pricing_04({ plans = [] }) {
 
 const Plan = ({ plan, billPlan, index, router }) => {
     const [isLoading, setIsLoading] = useState(false);
-    // Debug: Log the values being passed to NumberFlow
-    const currentPrice = billPlan === "monthly" ? Number(plan.price_monthly) : Number(plan.price_annual);
-    console.log(`Plan: ${plan.name}, BillPlan: ${billPlan}, Price: ${currentPrice}, Monthly: ${plan.price_monthly}, Annual: ${plan.price_annual}`);
+
+    // Calculate prices
+    const monthlyPrice = Number(plan.price_monthly);
+    const yearlyPrice = Number(plan.price_annual);
+    const yearlyMonthlyEquivalent = yearlyPrice / 12;
+
+    const currentPrice = billPlan === "monthly" ? monthlyPrice : yearlyMonthlyEquivalent;
+    const showStrikethrough = billPlan === "annually" && yearlyMonthlyEquivalent < monthlyPrice;
 
     // Transform features based on plan capabilities
     const getFeatures = () => {
@@ -173,6 +178,15 @@ const Plan = ({ plan, billPlan, index, router }) => {
                 <div className="relative p-6 text-center">
                     {/* Price */}
                     <div className="mb-1">
+                        {showStrikethrough && (
+                            <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="text-2xl text-gray-500 line-through mb-2"
+                            >
+                                ${monthlyPrice.toFixed(2)}/mo
+                            </motion.div>
+                        )}
                         <motion.div
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -201,7 +215,7 @@ const Plan = ({ plan, billPlan, index, router }) => {
                                     transition={{ duration: 0.2 }}
                                     className="text-2xl md:text-3xl text-gray-400"
                                 >
-                                    /{billPlan === "monthly" ? "mo" : "yr"}
+                                    /mo
                                 </motion.span>
                             </AnimatePresence>
                         </motion.div>
@@ -232,7 +246,7 @@ const Plan = ({ plan, billPlan, index, router }) => {
                             {billPlan === "monthly" ? (
                                 "Billed monthly"
                             ) : (
-                                "Billed annually"
+                                `Billed $${yearlyPrice.toFixed(2)} annually`
                             )}
                         </motion.span>
                     </AnimatePresence>

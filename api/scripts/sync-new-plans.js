@@ -36,8 +36,8 @@ const newPlans = [
     {
         name: 'Family',
         description: 'Ideal for families with multiple users and premium features',
-        monthlyPrice: 1099, // $10.99 in cents
-        annualPrice: 10999, // $109.99 in cents
+        monthlyPrice: 599, // $5.99 in cents
+        annualPrice: 4800, // $48.00 in cents
         metadata: {
             max_profiles: '5',
             trial_days: '7',

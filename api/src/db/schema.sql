@@ -470,8 +470,8 @@ INSERT INTO plans (
     support_level
 )
 VALUES 
-    ('Basic', 'price_basic_monthly', 'price_basic_annual', 7.99, 79.99, 1, 7, false, false, true, false, false, true, 'email'),
-    ('Family', 'price_family_monthly', 'price_family_annual', 14.99, 149.99, 5, 7, true, true, true, true, true, true, 'priority_24_7')
+    ('Basic', 'price_basic_monthly', 'price_basic_annual', 2.99, 24.00, 1, 7, false, false, true, false, false, true, 'email'),
+    ('Family', 'price_family_monthly', 'price_family_annual', 5.99, 48.00, 5, 7, true, true, true, true, true, true, 'priority_24_7')
 ON CONFLICT (stripe_price_id) DO NOTHING;
 
 -- Insert default admin user
