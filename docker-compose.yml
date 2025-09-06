@@ -11,8 +11,7 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./src/db/optimize.sql:/docker-entrypoint-initdb.d/02-optimize.sql
+      - ./api/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
     ports:
       - "5432:5432"
     healthcheck:
