@@ -21,7 +21,7 @@ const newPlans = [
         description: 'Perfect for individuals who want to enjoy IPTV',
         monthlyPrice: 299, // $2.99 in cents
         annualPrice: 2400, // $24.00 in cents
-        lifetimePrice: null, // No lifetime option for Basic
+        isLifetime: false,
         metadata: {
             max_profiles: '1',
             trial_days: '7',
@@ -31,7 +31,8 @@ const newPlans = [
             download_offline_viewing: 'false',
             parental_controls: 'true',
             support_level: 'email',
-            is_lifetime_available: 'false'
+            is_lifetime: 'false',
+            is_limited_offer: 'false'
         }
     },
     {
@@ -39,7 +40,7 @@ const newPlans = [
         description: 'Ideal for families with multiple users and premium features',
         monthlyPrice: 599, // $5.99 in cents
         annualPrice: 4800, // $48.00 in cents
-        lifetimePrice: 4499, // $44.99 in cents - Limited Time Offer!
+        isLifetime: false,
         metadata: {
             max_profiles: '5',
             trial_days: '7',
@@ -49,7 +50,26 @@ const newPlans = [
             download_offline_viewing: 'true',
             parental_controls: 'true',
             support_level: 'priority_24_7',
-            is_lifetime_available: 'true'
+            is_lifetime: 'false',
+            is_limited_offer: 'false'
+        }
+    },
+    {
+        name: 'Lifetime Family',
+        description: 'LIMITED TIME OFFER - Get lifetime access to all Family plan features!',
+        lifetimePrice: 4499, // $44.99 one-time payment
+        isLifetime: true,
+        metadata: {
+            max_profiles: '5',
+            trial_days: '0', // No trial for lifetime
+            cine_party: 'true',
+            sync_data_across_devices: 'true',
+            record_live_tv: 'true',
+            download_offline_viewing: 'true',
+            parental_controls: 'true',
+            support_level: 'priority_24_7',
+            is_lifetime: 'true',
+            is_limited_offer: 'true'
         }
     }
 ];
@@ -70,7 +90,7 @@ async function findExistingProduct(productName) {
 }
 
 // Helper function to find existing price for a product
-async function findExistingPrice(productId, amount, interval) {
+async function findExistingPrice(productId, amount, interval, isLifetime = false) {
     try {
         const prices = await stripe.prices.list({
             product: productId,
@@ -78,7 +98,7 @@ async function findExistingPrice(productId, amount, interval) {
             limit: 100
         });
 
-        if (interval === 'lifetime') {
+        if (isLifetime) {
             // For lifetime plans, look for one-time prices
             return prices.data.find(price =>
                 price.unit_amount === amount &&
@@ -123,54 +143,13 @@ async function syncNewPlans() {
                 console.log(`  ✅ Created new product: ${product.id}`);
             }
 
-            // Check if monthly price already exists
-            let monthlyPrice = await findExistingPrice(product.id, plan.monthlyPrice, 'month');
-
-            if (monthlyPrice) {
-                console.log(`  ✅ Found existing monthly price: ${monthlyPrice.id}`);
-            } else {
-                // Create monthly price
-                monthlyPrice = await stripe.prices.create({
-                    product: product.id,
-                    unit_amount: plan.monthlyPrice,
-                    currency: 'usd',
-                    recurring: {
-                        interval: 'month'
-                    },
-                    metadata: {
-                        billing_interval: 'month',
-                        plan_name: plan.name
-                    }
-                });
-                console.log(`  ✅ Created new monthly price: ${monthlyPrice.id}`);
-            }
-
-            // Check if annual price already exists
-            let annualPrice = await findExistingPrice(product.id, plan.annualPrice, 'year');
-
-            if (annualPrice) {
-                console.log(`  ✅ Found existing annual price: ${annualPrice.id}`);
-            } else {
-                // Create annual price
-                annualPrice = await stripe.prices.create({
-                    product: product.id,
-                    unit_amount: plan.annualPrice,
-                    currency: 'usd',
-                    recurring: {
-                        interval: 'year'
-                    },
-                    metadata: {
-                        billing_interval: 'year',
-                        plan_name: plan.name
-                    }
-                });
-                console.log(`  ✅ Created new annual price: ${annualPrice.id}`);
-            }
-
-            // Handle lifetime price if available
+            let monthlyPrice = null;
+            let annualPrice = null;
             let lifetimePrice = null;
-            if (plan.lifetimePrice) {
-                lifetimePrice = await findExistingPrice(product.id, plan.lifetimePrice, 'lifetime');
+
+            if (plan.isLifetime) {
+                // For lifetime plans, only create a one-time price
+                lifetimePrice = await findExistingPrice(product.id, plan.lifetimePrice, null, true);
 
                 if (lifetimePrice) {
                     console.log(`  ✅ Found existing lifetime price: ${lifetimePrice.id}`);
@@ -188,10 +167,56 @@ async function syncNewPlans() {
                     });
                     console.log(`  ✅ Created new lifetime price: ${lifetimePrice.id}`);
                 }
+            } else {
+                // For regular plans, create monthly price
+                monthlyPrice = await findExistingPrice(product.id, plan.monthlyPrice, 'month');
+
+                if (monthlyPrice) {
+                    console.log(`  ✅ Found existing monthly price: ${monthlyPrice.id}`);
+                } else {
+                    // Create monthly price
+                    monthlyPrice = await stripe.prices.create({
+                        product: product.id,
+                        unit_amount: plan.monthlyPrice,
+                        currency: 'usd',
+                        recurring: {
+                            interval: 'month'
+                        },
+                        metadata: {
+                            billing_interval: 'month',
+                            plan_name: plan.name
+                        }
+                    });
+                    console.log(`  ✅ Created new monthly price: ${monthlyPrice.id}`);
+                }
+            }
+
+            // For regular plans, also create annual price
+            if (!plan.isLifetime) {
+                annualPrice = await findExistingPrice(product.id, plan.annualPrice, 'year');
+
+                if (annualPrice) {
+                    console.log(`  ✅ Found existing annual price: ${annualPrice.id}`);
+                } else {
+                    // Create annual price
+                    annualPrice = await stripe.prices.create({
+                        product: product.id,
+                        unit_amount: plan.annualPrice,
+                        currency: 'usd',
+                        recurring: {
+                            interval: 'year'
+                        },
+                        metadata: {
+                            billing_interval: 'year',
+                            plan_name: plan.name
+                        }
+                    });
+                    console.log(`  ✅ Created new annual price: ${annualPrice.id}`);
+                }
             }
 
             // Update database with Stripe IDs
-            await updatePlanInDatabase(plan, product.id, monthlyPrice.id, annualPrice.id, lifetimePrice?.id);
+            await updatePlanInDatabase(plan, product.id, monthlyPrice?.id, annualPrice?.id, lifetimePrice?.id);
         }
 
         console.log('\n✅ Plans sync completed successfully!');
@@ -204,11 +229,11 @@ async function syncNewPlans() {
     }
 }
 
-async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPriceId, lifetimePriceId = null) {
+async function updatePlanInDatabase(plan, productId, monthlyPriceId = null, annualPriceId = null, lifetimePriceId = null) {
     try {
         // Check if plan exists and get current Stripe IDs
         const existingPlan = await pool.query(
-            'SELECT id, stripe_product_id, stripe_price_id, stripe_price_id_annual, stripe_price_id_lifetime FROM plans WHERE name = $1',
+            'SELECT id, stripe_product_id, stripe_price_id, stripe_price_id_annual FROM plans WHERE name = $1',
             [plan.name]
         );
 
@@ -217,9 +242,8 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
 
             // Check if Stripe IDs are already up to date
             if (currentPlan.stripe_product_id === productId &&
-                currentPlan.stripe_price_id === monthlyPriceId &&
-                currentPlan.stripe_price_id_annual === annualPriceId &&
-                currentPlan.stripe_price_id_lifetime === lifetimePriceId) {
+                currentPlan.stripe_price_id === (plan.isLifetime ? lifetimePriceId : monthlyPriceId) &&
+                (!plan.isLifetime || currentPlan.stripe_price_id_annual === annualPriceId)) {
                 console.log(`  ✅ Plan ${plan.name} already up to date in database`);
                 return;
             }
@@ -230,28 +254,27 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     stripe_product_id = $1,
                     stripe_price_id = $2,
                     stripe_price_id_annual = $3,
-                    stripe_price_id_lifetime = $4,
-                    price_monthly = $5,
-                    price_annual = $6,
-                    price_lifetime = $7,
-                    max_profiles = $8,
-                    trial_days = $9,
-                    cine_party = $10,
-                    sync_data_across_devices = $11,
-                    record_live_tv = $12,
-                    download_offline_viewing = $13,
-                    parental_controls = $14,
-                    support_level = $15,
-                    is_lifetime_available = $16,
+                    price_monthly = $4,
+                    price_annual = $5,
+                    price_lifetime = $6,
+                    max_profiles = $7,
+                    trial_days = $8,
+                    cine_party = $9,
+                    sync_data_across_devices = $10,
+                    record_live_tv = $11,
+                    download_offline_viewing = $12,
+                    parental_controls = $13,
+                    support_level = $14,
+                    is_lifetime = $15,
+                    is_limited_offer = $16,
                     updated_at = NOW()
                 WHERE name = $17
             `, [
                 productId,
-                monthlyPriceId,
-                annualPriceId,
-                lifetimePriceId,
-                plan.monthlyPrice / 100,
-                plan.annualPrice / 100,
+                plan.isLifetime ? lifetimePriceId : monthlyPriceId,
+                plan.isLifetime ? null : annualPriceId,
+                plan.monthlyPrice ? plan.monthlyPrice / 100 : null,
+                plan.annualPrice ? plan.annualPrice / 100 : null,
                 plan.lifetimePrice ? plan.lifetimePrice / 100 : null,
                 parseInt(plan.metadata.max_profiles),
                 parseInt(plan.metadata.trial_days),
@@ -261,7 +284,8 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 plan.metadata.download_offline_viewing === 'true',
                 plan.metadata.parental_controls === 'true',
                 plan.metadata.support_level,
-                plan.metadata.is_lifetime_available === 'true',
+                plan.metadata.is_lifetime === 'true',
+                plan.metadata.is_limited_offer === 'true',
                 plan.name
             ]);
 
@@ -274,7 +298,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     stripe_product_id,
                     stripe_price_id,
                     stripe_price_id_annual,
-                    stripe_price_id_lifetime,
                     price_monthly,
                     price_annual,
                     price_lifetime,
@@ -286,7 +309,8 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     download_offline_viewing,
                     parental_controls,
                     support_level,
-                    is_lifetime_available,
+                    is_lifetime,
+                    is_limited_offer,
                     is_active,
                     created_at,
                     updated_at
@@ -295,11 +319,10 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
             `, [
                 plan.name,
                 productId,
-                monthlyPriceId,
-                annualPriceId,
-                lifetimePriceId,
-                plan.monthlyPrice / 100,
-                plan.annualPrice / 100,
+                plan.isLifetime ? lifetimePriceId : monthlyPriceId,
+                plan.isLifetime ? null : annualPriceId,
+                plan.monthlyPrice ? plan.monthlyPrice / 100 : null,
+                plan.annualPrice ? plan.annualPrice / 100 : null,
                 plan.lifetimePrice ? plan.lifetimePrice / 100 : null,
                 parseInt(plan.metadata.max_profiles),
                 parseInt(plan.metadata.trial_days),
@@ -309,7 +332,8 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 plan.metadata.download_offline_viewing === 'true',
                 plan.metadata.parental_controls === 'true',
                 plan.metadata.support_level,
-                plan.metadata.is_lifetime_available === 'true',
+                plan.metadata.is_lifetime === 'true',
+                plan.metadata.is_limited_offer === 'true',
                 true
             ]);
 
