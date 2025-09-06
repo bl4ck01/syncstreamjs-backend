@@ -402,7 +402,6 @@ export const notifications = {
         // Convert new feature columns to features array for email template
         const features = [];
         if (plan.cine_party) features.push('Cine Party (Watch Party)');
-        if (plan.cine_party_voice_chat) features.push('Cine Party with Voice Chat');
         if (plan.sync_data_across_devices) features.push('Sync Data Across Devices');
         if (plan.record_live_tv) features.push('Record Live TV');
         if (plan.download_offline_viewing) features.push('Download for Offline Viewing');

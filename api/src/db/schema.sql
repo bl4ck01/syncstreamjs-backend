@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS plans (
     trial_days INTEGER DEFAULT 3,
     -- Feature columns
     cine_party BOOLEAN DEFAULT FALSE,
-    cine_party_voice_chat BOOLEAN DEFAULT FALSE,
     sync_data_across_devices BOOLEAN DEFAULT TRUE,
     record_live_tv BOOLEAN DEFAULT FALSE,
     download_offline_viewing BOOLEAN DEFAULT FALSE,
@@ -462,7 +461,6 @@ INSERT INTO plans (
     max_profiles, 
     trial_days,
     cine_party,
-    cine_party_voice_chat,
     sync_data_across_devices,
     record_live_tv,
     download_offline_viewing,
@@ -470,8 +468,8 @@ INSERT INTO plans (
     support_level
 )
 VALUES 
-    ('Basic', 'price_basic_monthly', 'price_basic_annual', 2.99, 24.00, 1, 7, false, false, true, false, false, true, 'email'),
-    ('Family', 'price_family_monthly', 'price_family_annual', 5.99, 48.00, 5, 7, true, true, true, true, true, true, 'priority_24_7')
+    ('Basic', 'price_basic_monthly', 'price_basic_annual', 2.99, 24.00, 1, 7, false, true, false, false, true, 'email'),
+    ('Family', 'price_family_monthly', 'price_family_annual', 5.99, 48.00, 5, 7, true, true, true, true, true, 'priority_24_7')
 ON CONFLICT (stripe_price_id) DO NOTHING;
 
 -- Insert default admin user

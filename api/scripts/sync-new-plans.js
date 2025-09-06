@@ -25,7 +25,6 @@ const newPlans = [
             max_profiles: '1',
             trial_days: '7',
             cine_party: 'false',
-            cine_party_voice_chat: 'false',
             sync_data_across_devices: 'true',
             record_live_tv: 'false',
             download_offline_viewing: 'false',
@@ -42,7 +41,6 @@ const newPlans = [
             max_profiles: '5',
             trial_days: '7',
             cine_party: 'true',
-            cine_party_voice_chat: 'true',
             sync_data_across_devices: 'true',
             record_live_tv: 'true',
             download_offline_viewing: 'true',
@@ -199,14 +197,13 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     max_profiles = $6,
                     trial_days = $7,
                     cine_party = $8,
-                    cine_party_voice_chat = $9,
-                    sync_data_across_devices = $10,
-                    record_live_tv = $11,
-                    download_offline_viewing = $12,
-                    parental_controls = $13,
-                    support_level = $14,
+                    sync_data_across_devices = $9,
+                    record_live_tv = $10,
+                    download_offline_viewing = $11,
+                    parental_controls = $12,
+                    support_level = $13,
                     updated_at = NOW()
-                WHERE name = $15
+                WHERE name = $14
             `, [
                 productId,
                 monthlyPriceId,
@@ -216,7 +213,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 parseInt(plan.metadata.max_profiles),
                 parseInt(plan.metadata.trial_days),
                 plan.metadata.cine_party === 'true',
-                plan.metadata.cine_party_voice_chat === 'true',
                 plan.metadata.sync_data_across_devices === 'true',
                 plan.metadata.record_live_tv === 'true',
                 plan.metadata.download_offline_viewing === 'true',
@@ -239,7 +235,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     max_profiles,
                     trial_days,
                     cine_party,
-                    cine_party_voice_chat,
                     sync_data_across_devices,
                     record_live_tv,
                     download_offline_viewing,
@@ -248,7 +243,7 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     is_active,
                     created_at,
                     updated_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
                 RETURNING id
             `, [
                 plan.name,
@@ -260,7 +255,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 parseInt(plan.metadata.max_profiles),
                 parseInt(plan.metadata.trial_days),
                 plan.metadata.cine_party === 'true',
-                plan.metadata.cine_party_voice_chat === 'true',
                 plan.metadata.sync_data_across_devices === 'true',
                 plan.metadata.record_live_tv === 'true',
                 plan.metadata.download_offline_viewing === 'true',
