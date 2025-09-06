@@ -246,7 +246,6 @@ export const serializers = {
                 max_profiles: plan.max_profiles,
                 trial_days: plan.trial_days,
                 cine_party: plan.cine_party,
-                cine_party_voice_chat: plan.cine_party_voice_chat,
                 sync_data_across_devices: plan.sync_data_across_devices,
                 record_live_tv: plan.record_live_tv,
                 download_offline_viewing: plan.download_offline_viewing,

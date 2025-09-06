@@ -32,7 +32,6 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 p.max_profiles,
                 p.trial_days,
                 p.cine_party,
-                p.cine_party_voice_chat,
                 p.sync_data_across_devices,
                 p.record_live_tv,
                 p.download_offline_viewing,
@@ -77,7 +76,6 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 max_profiles,
                 trial_days,
                 cine_party,
-                cine_party_voice_chat,
                 sync_data_across_devices,
                 record_live_tv,
                 download_offline_viewing,
@@ -388,7 +386,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
 
         // Get the new plan by ID or name
         const newPlan = await getPlanByIdOrName(db, new_plan_id);
-        
+
         if (!newPlan) {
             set.status = 400;
             return {
@@ -397,7 +395,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                 data: null
             };
         }
-        
+
         // Get current plan details
         const currentPlan = await db.getOne(
             'SELECT * FROM plans WHERE id = $1',
@@ -439,7 +437,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             });
 
             // Get detailed proration breakdown from Stripe
-            const prorationItems = prorationPreview.lines.data.filter(line => 
+            const prorationItems = prorationPreview.lines.data.filter(line =>
                 line.proration && line.proration.type === 'invoice_item'
             );
 
@@ -502,7 +500,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
 
         } catch (error) {
             console.error('[SUBSCRIPTION] Error previewing plan change:', error);
-            
+
             // Handle specific Stripe errors
             if (error.type === 'StripeError') {
                 console.error('[SUBSCRIPTION] Stripe error details:', {
@@ -510,7 +508,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                     message: error.message,
                     decline_code: error.decline_code
                 });
-                
+
                 set.status = 400;
                 return {
                     success: false,
@@ -518,7 +516,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
                     data: null
                 };
             }
-            
+
             set.status = 500;
             return {
                 success: false,

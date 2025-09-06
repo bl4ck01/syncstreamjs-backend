@@ -114,7 +114,7 @@ const Plan = ({ plan, billPlan, index, router }) => {
 
         // Feature flags
         if (plan.cine_party) {
-            features.push(plan.cine_party_voice_chat ? "Watch party with voice chat" : "Watch party feature");
+            features.push("Watch party feature");
         }
 
         if (plan.record_live_tv) {

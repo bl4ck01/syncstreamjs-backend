@@ -6,7 +6,7 @@ import { SparklesCore } from '@/components/ui/sparkles';
 export default async function PricingPage() {
   // Fetch plans from the backend
   const plansResponse = await getPlans();
-  
+
   // Extract plans data or provide empty array as fallback
   const plans = plansResponse?.success && plansResponse?.data ? plansResponse.data : [];
 
@@ -25,7 +25,7 @@ export default async function PricingPage() {
           speed={0.8}
         />
       </div>
-      
+
       {/* Content */}
       <div className="relative z-10">
         <Pricing_04 plans={plans} />

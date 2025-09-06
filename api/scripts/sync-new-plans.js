@@ -20,12 +20,11 @@ const newPlans = [
         name: 'Basic',
         description: 'Perfect for individuals who want to enjoy IPTV',
         monthlyPrice: 299, // $2.99 in cents
-        annualPrice: 2999, // $29.99 in cents
+        annualPrice: 2400, // $24.00 in cents
         metadata: {
             max_profiles: '1',
             trial_days: '7',
             cine_party: 'false',
-            cine_party_voice_chat: 'false',
             sync_data_across_devices: 'true',
             record_live_tv: 'false',
             download_offline_viewing: 'false',
@@ -42,7 +41,6 @@ const newPlans = [
             max_profiles: '5',
             trial_days: '7',
             cine_party: 'true',
-            cine_party_voice_chat: 'true',
             sync_data_across_devices: 'true',
             record_live_tv: 'true',
             download_offline_viewing: 'true',
@@ -59,7 +57,7 @@ async function findExistingProduct(productName) {
             active: true,
             limit: 100
         });
-        
+
         return products.data.find(product => product.name === productName);
     } catch (error) {
         console.error('Error searching for existing product:', error);
@@ -75,8 +73,8 @@ async function findExistingPrice(productId, amount, interval) {
             active: true,
             limit: 100
         });
-        
-        return prices.data.find(price => 
+
+        return prices.data.find(price =>
             price.unit_amount === amount &&
             price.currency === 'usd' &&
             price.recurring &&
@@ -91,13 +89,13 @@ async function findExistingPrice(productId, amount, interval) {
 async function syncNewPlans() {
     try {
         console.log('📊 Syncing plans with Stripe...');
-        
+
         for (const plan of newPlans) {
             console.log(`\n🔄 Processing plan: ${plan.name}`);
-            
+
             // Check if product already exists in Stripe
             let product = await findExistingProduct(plan.name);
-            
+
             if (product) {
                 console.log(`  ✅ Found existing product: ${product.id}`);
             } else {
@@ -110,10 +108,10 @@ async function syncNewPlans() {
                 });
                 console.log(`  ✅ Created new product: ${product.id}`);
             }
-            
+
             // Check if monthly price already exists
             let monthlyPrice = await findExistingPrice(product.id, plan.monthlyPrice, 'month');
-            
+
             if (monthlyPrice) {
                 console.log(`  ✅ Found existing monthly price: ${monthlyPrice.id}`);
             } else {
@@ -132,10 +130,10 @@ async function syncNewPlans() {
                 });
                 console.log(`  ✅ Created new monthly price: ${monthlyPrice.id}`);
             }
-            
+
             // Check if annual price already exists
             let annualPrice = await findExistingPrice(product.id, plan.annualPrice, 'year');
-            
+
             if (annualPrice) {
                 console.log(`  ✅ Found existing annual price: ${annualPrice.id}`);
             } else {
@@ -154,13 +152,13 @@ async function syncNewPlans() {
                 });
                 console.log(`  ✅ Created new annual price: ${annualPrice.id}`);
             }
-            
+
             // Update database with Stripe IDs
             await updatePlanInDatabase(plan, product.id, monthlyPrice.id, annualPrice.id);
         }
-        
+
         console.log('\n✅ Plans sync completed successfully!');
-        
+
     } catch (error) {
         console.error('❌ Error syncing plans:', error);
         process.exit(1);
@@ -176,18 +174,18 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
             'SELECT id, stripe_product_id, stripe_price_id, stripe_price_id_annual FROM plans WHERE name = $1',
             [plan.name]
         );
-        
+
         if (existingPlan.rows.length > 0) {
             const currentPlan = existingPlan.rows[0];
-            
+
             // Check if Stripe IDs are already up to date
-            if (currentPlan.stripe_product_id === productId && 
-                currentPlan.stripe_price_id === monthlyPriceId && 
+            if (currentPlan.stripe_product_id === productId &&
+                currentPlan.stripe_price_id === monthlyPriceId &&
                 currentPlan.stripe_price_id_annual === annualPriceId) {
                 console.log(`  ✅ Plan ${plan.name} already up to date in database`);
                 return;
             }
-            
+
             // Update existing plan
             await pool.query(`
                 UPDATE plans SET
@@ -199,14 +197,13 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     max_profiles = $6,
                     trial_days = $7,
                     cine_party = $8,
-                    cine_party_voice_chat = $9,
-                    sync_data_across_devices = $10,
-                    record_live_tv = $11,
-                    download_offline_viewing = $12,
-                    parental_controls = $13,
-                    support_level = $14,
+                    sync_data_across_devices = $9,
+                    record_live_tv = $10,
+                    download_offline_viewing = $11,
+                    parental_controls = $12,
+                    support_level = $13,
                     updated_at = NOW()
-                WHERE name = $15
+                WHERE name = $14
             `, [
                 productId,
                 monthlyPriceId,
@@ -216,7 +213,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 parseInt(plan.metadata.max_profiles),
                 parseInt(plan.metadata.trial_days),
                 plan.metadata.cine_party === 'true',
-                plan.metadata.cine_party_voice_chat === 'true',
                 plan.metadata.sync_data_across_devices === 'true',
                 plan.metadata.record_live_tv === 'true',
                 plan.metadata.download_offline_viewing === 'true',
@@ -224,7 +220,7 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 plan.metadata.support_level,
                 plan.name
             ]);
-            
+
             console.log(`  ✅ Updated plan in database: ${plan.name}`);
         } else {
             // Create new plan
@@ -239,7 +235,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     max_profiles,
                     trial_days,
                     cine_party,
-                    cine_party_voice_chat,
                     sync_data_across_devices,
                     record_live_tv,
                     download_offline_viewing,
@@ -248,7 +243,7 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                     is_active,
                     created_at,
                     updated_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
                 RETURNING id
             `, [
                 plan.name,
@@ -260,7 +255,6 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 parseInt(plan.metadata.max_profiles),
                 parseInt(plan.metadata.trial_days),
                 plan.metadata.cine_party === 'true',
-                plan.metadata.cine_party_voice_chat === 'true',
                 plan.metadata.sync_data_across_devices === 'true',
                 plan.metadata.record_live_tv === 'true',
                 plan.metadata.download_offline_viewing === 'true',
@@ -268,10 +262,10 @@ async function updatePlanInDatabase(plan, productId, monthlyPriceId, annualPrice
                 plan.metadata.support_level,
                 true
             ]);
-            
+
             console.log(`  ✅ Created plan in database: ${plan.name} (ID: ${result.rows[0].id})`);
         }
-        
+
     } catch (error) {
         console.error(`  ❌ Error updating plan ${plan.name} in database:`, error);
     }

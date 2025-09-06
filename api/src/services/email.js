@@ -3,9 +3,9 @@ import { t } from '../i18n/index.js';
 
 // Email templates
 const templates = {
-    welcome: {
-        subject: (lang) => t('email.welcome.subject', lang),
-        html: (data, lang) => `
+  welcome: {
+    subject: (lang) => t('email.welcome.subject', lang),
+    html: (data, lang) => `
       <!DOCTYPE html>
       <html>
       <head>
@@ -45,11 +45,11 @@ const templates = {
       </body>
       </html>
     `
-    },
+  },
 
-    passwordReset: {
-        subject: (lang) => t('email.passwordReset.subject', lang),
-        html: (data, lang) => `
+  passwordReset: {
+    subject: (lang) => t('email.passwordReset.subject', lang),
+    html: (data, lang) => `
       <!DOCTYPE html>
       <html>
       <head>
@@ -83,11 +83,11 @@ const templates = {
       </body>
       </html>
     `
-    },
+  },
 
-    subscriptionConfirmation: {
-        subject: (lang) => t('email.subscription.subject', lang),
-        html: (data, lang) => `
+  subscriptionConfirmation: {
+    subject: (lang) => t('email.subscription.subject', lang),
+    html: (data, lang) => `
       <!DOCTYPE html>
       <html>
       <head>
@@ -122,11 +122,11 @@ const templates = {
       </body>
       </html>
     `
-    },
+  },
 
-    paymentFailed: {
-        subject: (lang) => t('email.paymentFailed.subject', lang),
-        html: (data, lang) => `
+  paymentFailed: {
+    subject: (lang) => t('email.paymentFailed.subject', lang),
+    html: (data, lang) => `
       <!DOCTYPE html>
       <html>
       <head>
@@ -161,11 +161,11 @@ const templates = {
       </body>
       </html>
     `
-    },
+  },
 
-    trialEnding: {
-        subject: (lang) => t('email.trialEnding.subject', lang),
-        html: (data, lang) => `
+  trialEnding: {
+    subject: (lang) => t('email.trialEnding.subject', lang),
+    html: (data, lang) => `
       <!DOCTYPE html>
       <html>
       <head>
@@ -203,178 +203,178 @@ const templates = {
       </body>
       </html>
     `
-    }
+  }
 };
 
 // Email service interface
 class EmailService {
-    constructor() {
-        this.provider = this.initializeProvider();
+  constructor() {
+    this.provider = this.initializeProvider();
+  }
+
+  initializeProvider() {
+    switch (env.EMAIL_SERVICE) {
+      case 'sendgrid':
+        return new SendGridProvider();
+      case 'ses':
+        return new SESProvider();
+      case 'smtp':
+        return new SMTPProvider();
+      default:
+        return new ConsoleProvider();
+    }
+  }
+
+  async send(to, template, data, language = env.DEFAULT_LANGUAGE) {
+    if (!templates[template]) {
+      throw new Error(`Email template '${template}' not found`);
     }
 
-    initializeProvider() {
-        switch (env.EMAIL_SERVICE) {
-            case 'sendgrid':
-                return new SendGridProvider();
-            case 'ses':
-                return new SESProvider();
-            case 'smtp':
-                return new SMTPProvider();
-            default:
-                return new ConsoleProvider();
-        }
+    const { subject, html } = templates[template];
+
+    const emailData = {
+      to,
+      from: env.EMAIL_FROM,
+      subject: subject(language),
+      html: html(data, language)
+    };
+
+    try {
+      const result = await this.provider.send(emailData);
+      console.log(`📧 Email sent: ${template} to ${to}`);
+      return result;
+    } catch (error) {
+      console.error(`❌ Failed to send email: ${template} to ${to}`, error);
+      throw error;
     }
+  }
 
-    async send(to, template, data, language = env.DEFAULT_LANGUAGE) {
-        if (!templates[template]) {
-            throw new Error(`Email template '${template}' not found`);
-        }
+  async sendBatch(recipients, template, dataMap, language = env.DEFAULT_LANGUAGE) {
+    const results = await Promise.allSettled(
+      recipients.map(recipient =>
+        this.send(recipient, template, dataMap[recipient] || {}, language)
+      )
+    );
 
-        const { subject, html } = templates[template];
+    const successful = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.filter(r => r.status === 'rejected').length;
 
-        const emailData = {
-            to,
-            from: env.EMAIL_FROM,
-            subject: subject(language),
-            html: html(data, language)
-        };
+    console.log(`📧 Batch email: ${successful} sent, ${failed} failed`);
 
-        try {
-            const result = await this.provider.send(emailData);
-            console.log(`📧 Email sent: ${template} to ${to}`);
-            return result;
-        } catch (error) {
-            console.error(`❌ Failed to send email: ${template} to ${to}`, error);
-            throw error;
-        }
-    }
-
-    async sendBatch(recipients, template, dataMap, language = env.DEFAULT_LANGUAGE) {
-        const results = await Promise.allSettled(
-            recipients.map(recipient =>
-                this.send(recipient, template, dataMap[recipient] || {}, language)
-            )
-        );
-
-        const successful = results.filter(r => r.status === 'fulfilled').length;
-        const failed = results.filter(r => r.status === 'rejected').length;
-
-        console.log(`📧 Batch email: ${successful} sent, ${failed} failed`);
-
-        return { successful, failed, results };
-    }
+    return { successful, failed, results };
+  }
 }
 
 // Email providers
 class ConsoleProvider {
-    async send(data) {
-        console.log('📧 [Console Email Provider]');
-        console.log('To:', data.to);
-        console.log('From:', data.from);
-        console.log('Subject:', data.subject);
-        console.log('---');
-        console.log('HTML Preview:', data.html.substring(0, 200) + '...');
-        console.log('---');
-        return { success: true, provider: 'console' };
-    }
+  async send(data) {
+    console.log('📧 [Console Email Provider]');
+    console.log('To:', data.to);
+    console.log('From:', data.from);
+    console.log('Subject:', data.subject);
+    console.log('---');
+    console.log('HTML Preview:', data.html.substring(0, 200) + '...');
+    console.log('---');
+    return { success: true, provider: 'console' };
+  }
 }
 
 class SendGridProvider {
-    async send(data) {
-        if (!env.EMAIL_API_KEY) {
-            throw new Error('SendGrid API key not configured');
-        }
-
-        // SendGrid API implementation
-        const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${env.EMAIL_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                personalizations: [{ to: [{ email: data.to }] }],
-                from: { email: data.from },
-                subject: data.subject,
-                content: [{ type: 'text/html', value: data.html }]
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`SendGrid API error: ${response.status}`);
-        }
-
-        return { success: true, provider: 'sendgrid', messageId: response.headers.get('x-message-id') };
+  async send(data) {
+    if (!env.EMAIL_API_KEY) {
+      throw new Error('SendGrid API key not configured');
     }
+
+    // SendGrid API implementation
+    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.EMAIL_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: data.to }] }],
+        from: { email: data.from },
+        subject: data.subject,
+        content: [{ type: 'text/html', value: data.html }]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`SendGrid API error: ${response.status}`);
+    }
+
+    return { success: true, provider: 'sendgrid', messageId: response.headers.get('x-message-id') };
+  }
 }
 
 class SESProvider {
-    async send(data) {
-        // AWS SES implementation would go here
-        throw new Error('SES provider not implemented yet');
-    }
+  async send(data) {
+    // AWS SES implementation would go here
+    throw new Error('SES provider not implemented yet');
+  }
 }
 
 class SMTPProvider {
-    async send(data) {
-        // SMTP implementation would go here
-        throw new Error('SMTP provider not implemented yet');
-    }
+  async send(data) {
+    // SMTP implementation would go here
+    throw new Error('SMTP provider not implemented yet');
+  }
 }
 
 // Email queue for background processing
 class EmailQueue {
-    constructor() {
-        this.queue = [];
-        this.processing = false;
-        this.batchSize = 10;
-        this.retryAttempts = 3;
+  constructor() {
+    this.queue = [];
+    this.processing = false;
+    this.batchSize = 10;
+    this.retryAttempts = 3;
+  }
+
+  add(to, template, data, language) {
+    this.queue.push({
+      to,
+      template,
+      data,
+      language,
+      attempts: 0,
+      addedAt: Date.now()
+    });
+
+    if (!this.processing) {
+      this.process();
+    }
+  }
+
+  async process() {
+    if (this.queue.length === 0) {
+      this.processing = false;
+      return;
     }
 
-    add(to, template, data, language) {
-        this.queue.push({
-            to,
-            template,
-            data,
-            language,
-            attempts: 0,
-            addedAt: Date.now()
-        });
+    this.processing = true;
+    const batch = this.queue.splice(0, this.batchSize);
 
-        if (!this.processing) {
-            this.process();
+    for (const email of batch) {
+      try {
+        await emailService.send(email.to, email.template, email.data, email.language);
+      } catch (error) {
+        email.attempts++;
+
+        if (email.attempts < this.retryAttempts) {
+          // Re-queue for retry with exponential backoff
+          setTimeout(() => {
+            this.queue.push(email);
+          }, Math.pow(2, email.attempts) * 1000);
+        } else {
+          console.error(`Failed to send email after ${this.retryAttempts} attempts:`, email);
         }
+      }
     }
 
-    async process() {
-        if (this.queue.length === 0) {
-            this.processing = false;
-            return;
-        }
-
-        this.processing = true;
-        const batch = this.queue.splice(0, this.batchSize);
-
-        for (const email of batch) {
-            try {
-                await emailService.send(email.to, email.template, email.data, email.language);
-            } catch (error) {
-                email.attempts++;
-
-                if (email.attempts < this.retryAttempts) {
-                    // Re-queue for retry with exponential backoff
-                    setTimeout(() => {
-                        this.queue.push(email);
-                    }, Math.pow(2, email.attempts) * 1000);
-                } else {
-                    console.error(`Failed to send email after ${this.retryAttempts} attempts:`, email);
-                }
-            }
-        }
-
-        // Process next batch
-        setTimeout(() => this.process(), 1000);
-    }
+    // Process next batch
+    setTimeout(() => this.process(), 1000);
+  }
 }
 
 // Create singleton instances
@@ -383,63 +383,62 @@ export const emailQueue = new EmailQueue();
 
 // Notification functions
 export const notifications = {
-    async sendWelcomeEmail(user) {
-        return emailService.send(user.email, 'welcome', {
-            name: user.full_name || 'User',
-            unsubscribeToken: Buffer.from(user.id).toString('base64')
-        }, user.language);
-    },
+  async sendWelcomeEmail(user) {
+    return emailService.send(user.email, 'welcome', {
+      name: user.full_name || 'User',
+      unsubscribeToken: Buffer.from(user.id).toString('base64')
+    }, user.language);
+  },
 
-    async sendPasswordResetEmail(user, resetToken, resetCode) {
-        return emailService.send(user.email, 'passwordReset', {
-            name: user.full_name || 'User',
-            resetToken,
-            resetCode
-        }, user.language);
-    },
+  async sendPasswordResetEmail(user, resetToken, resetCode) {
+    return emailService.send(user.email, 'passwordReset', {
+      name: user.full_name || 'User',
+      resetToken,
+      resetCode
+    }, user.language);
+  },
 
-    async sendSubscriptionConfirmation(user, subscription, plan) {
-        // Convert new feature columns to features array for email template
-        const features = [];
-        if (plan.cine_party) features.push('Cine Party (Watch Party)');
-        if (plan.cine_party_voice_chat) features.push('Cine Party with Voice Chat');
-        if (plan.sync_data_across_devices) features.push('Sync Data Across Devices');
-        if (plan.record_live_tv) features.push('Record Live TV');
-        if (plan.download_offline_viewing) features.push('Download for Offline Viewing');
-        if (plan.parental_controls) features.push('Parental Controls');
-        if (plan.support_level === 'email_chat') features.push('Email & Chat Support');
-        if (plan.support_level === 'priority_24_7') features.push('24/7 Priority Support');
-        else if (plan.support_level === 'email') features.push('Email Support');
+  async sendSubscriptionConfirmation(user, subscription, plan) {
+    // Convert new feature columns to features array for email template
+    const features = [];
+    if (plan.cine_party) features.push('Cine Party (Watch Party)');
+    if (plan.sync_data_across_devices) features.push('Sync Data Across Devices');
+    if (plan.record_live_tv) features.push('Record Live TV');
+    if (plan.download_offline_viewing) features.push('Download for Offline Viewing');
+    if (plan.parental_controls) features.push('Parental Controls');
+    if (plan.support_level === 'email_chat') features.push('Email & Chat Support');
+    if (plan.support_level === 'priority_24_7') features.push('24/7 Priority Support');
+    else if (plan.support_level === 'email') features.push('Email Support');
 
-        return emailService.send(user.email, 'subscriptionConfirmation', {
-            name: user.full_name || 'User',
-            planName: plan.name,
-            price: `$${plan.price_monthly}`,
-            features: features,
-            nextBillingDate: new Date(subscription.current_period_end).toLocaleDateString()
-        }, user.language);
-    },
+    return emailService.send(user.email, 'subscriptionConfirmation', {
+      name: user.full_name || 'User',
+      planName: plan.name,
+      price: `$${plan.price_monthly}`,
+      features: features,
+      nextBillingDate: new Date(subscription.current_period_end).toLocaleDateString()
+    }, user.language);
+  },
 
-    async sendPaymentFailedEmail(user, graceDays = 3) {
-        return emailService.send(user.email, 'paymentFailed', {
-            name: user.full_name || 'User',
-            graceDays
-        }, user.language);
-    },
+  async sendPaymentFailedEmail(user, graceDays = 3) {
+    return emailService.send(user.email, 'paymentFailed', {
+      name: user.full_name || 'User',
+      graceDays
+    }, user.language);
+  },
 
-    async sendTrialEndingEmail(user, daysRemaining) {
-        return emailService.send(user.email, 'trialEnding', {
-            name: user.full_name || 'User',
-            daysRemaining,
-            benefits: [
-                'Unlimited profiles',
-                'Multiple playlists',
-                'No ads',
-                'HD streaming',
-                'Priority support'
-            ]
-        }, user.language);
-    }
+  async sendTrialEndingEmail(user, daysRemaining) {
+    return emailService.send(user.email, 'trialEnding', {
+      name: user.full_name || 'User',
+      daysRemaining,
+      benefits: [
+        'Unlimited profiles',
+        'Multiple playlists',
+        'No ads',
+        'HD streaming',
+        'Priority support'
+      ]
+    }, user.language);
+  }
 };
 
 export default emailService;
