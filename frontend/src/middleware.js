@@ -61,12 +61,12 @@ export async function middleware(request) {
             return NextResponse.redirect(new URL('/pricing', request.url));
         }
 
-        // else if (validToken.user?.subscription_status !== 'none' && pathname === '/pricing') {
-        //     return NextResponse.redirect(new URL('/', request.url));
-        // }
+        else if (validToken.user?.subscription_status !== 'none' && pathname === '/pricing') {
+            return NextResponse.redirect(new URL('/', request.url));
+        }
 
 
-        else if (!profileToken && pathname !== '/profiles') {
+        else if (validToken.user?.subscription_status !== 'none' && !profileToken && pathname !== '/profiles') {
             return NextResponse.redirect(new URL('/profiles', request.url));
         }
 

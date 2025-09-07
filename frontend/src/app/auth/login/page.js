@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -55,18 +56,39 @@ export default function Login() {
 
     return (
         <div className="min-h-screen bg-black flex items-center justify-center p-4">
-            <div className="w-full max-w-md space-y-8">
+            <motion.div
+                initial="hidden"
+                animate="visible"
+                transition={{ duration: 0.4 }}
+                variants={{
+                    hidden: { filter: "blur(8px)", opacity: 0, y: 8 },
+                    visible: { filter: "blur(0px)", opacity: 1, y: 0 },
+                }}
+                className="w-full max-w-md space-y-8"
+            >
                 {/* Logo */}
-                <div className="text-center">
+                <motion.div
+                    initial="hidden"
+                    animate="visible"
+                    transition={{ duration: 0.45, delay: 0.05 }}
+                    variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
+                    className="text-center"
+                >
                     <div className="mx-auto w-12 h-12 bg-white rounded-lg flex items-center justify-center mb-4">
                         <div className="w-8 h-8 bg-black rounded flex items-center justify-center">
                             <div className="w-4 h-4 bg-white rounded-sm"></div>
                         </div>
                     </div>
-                </div>
+                </motion.div>
 
                 {/* Welcome Message */}
-                <div className="text-center">
+                <motion.div
+                    initial="hidden"
+                    animate="visible"
+                    transition={{ duration: 0.45, delay: 0.12 }}
+                    variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
+                    className="text-center"
+                >
                     <h1 className="text-3xl font-bold text-white mb-2">Welcome to SyncStream</h1>
                     <p className="text-white/60">
                         Don&apos;t have an account?{" "}
@@ -77,11 +99,18 @@ export default function Login() {
                             Sign up
                         </button>
                     </p>
-                </div>
+                </motion.div>
 
                 {/* Login Form */}
                 <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                    <motion.form
+                        onSubmit={form.handleSubmit(onSubmit)}
+                        className="space-y-6"
+                        initial="hidden"
+                        animate="visible"
+                        transition={{ duration: 0.45, delay: 0.18 }}
+                        variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
+                    >
                         <FormField
                             control={form.control}
                             name="email"
@@ -127,35 +156,50 @@ export default function Login() {
                         >
                             {isLoading ? "Logging in..." : "Login"}
                         </Button>
-                    </form>
+                    </motion.form>
                 </Form>
 
                 {/* Separator */}
-                <div className="relative">
+                <motion.div
+                    className="relative"
+                    initial="hidden"
+                    animate="visible"
+                    transition={{ duration: 0.45, delay: 0.24 }}
+                    variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
+                >
                     <Separator className="bg-gray-600" />
                     <div className="absolute inset-0 flex items-center justify-center">
                         <span className="bg-black px-4 text-gray-400 text-sm">Or</span>
                     </div>
-                </div>
+                </motion.div>
 
                 {/* Social Login Buttons */}
-                <Button
+                <motion.button
                     onClick={handleGoogleLogin}
-                    variant="outline"
-                    className="w-full border-gray-600 bg-gray-800 text-white hover:bg-gray-700 h-12"
+                    className="w-full border border-gray-600 bg-gray-800 text-white hover:bg-gray-700 h-12 rounded-md inline-flex items-center justify-center gap-2"
+                    initial="hidden"
+                    animate="visible"
+                    transition={{ duration: 0.45, delay: 0.3 }}
+                    variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
                 >
-                    <GoogleIcon className="mr-3" />
+                    <GoogleIcon className="w-4 h-4 mr-1.5" />
                     Continue with Google
-                </Button>
+                </motion.button>
 
                 {/* Legal Disclaimer */}
-                <p className="text-center text-gray-400 text-sm">
+                <motion.p
+                    className="text-center text-gray-400 text-sm"
+                    initial="hidden"
+                    animate="visible"
+                    transition={{ duration: 0.45, delay: 0.35 }}
+                    variants={{ hidden: { opacity: 0, y: 4 }, visible: { opacity: 1, y: 0 } }}
+                >
                     By clicking continue, you agree to our{" "}
                     <button className="underline hover:text-white">Terms of Service</button>{" "}
                     and{" "}
                     <button className="underline hover:text-white">Privacy Policy</button>.
-                </p>
-            </div>
+                </motion.p>
+            </motion.div>
         </div>
     );
 }
