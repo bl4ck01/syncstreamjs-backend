@@ -39,7 +39,7 @@ const app = new Elysia()
     origin: env.CORS_ORIGIN === '*' ? true : env.CORS_ORIGIN,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-API-Version', 'Idempotency-Key', 'Accept-Language'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-API-Version', 'Idempotency-Key', 'Accept-Language', 'X-Profile-Token'],
     exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'X-Request-ID', 'Content-Language']
   }))
 

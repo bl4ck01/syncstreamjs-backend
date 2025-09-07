@@ -57,6 +57,24 @@ export class StripeError extends AppError {
 
 // Database error handler
 export const handleDatabaseError = (error) => {
+    // Log the original database error details for debugging
+    console.error('🔍 Database Error Details:', {
+        code: error.code,
+        message: error.message,
+        detail: error.detail,
+        hint: error.hint,
+        position: error.position,
+        where: error.where,
+        schema: error.schema,
+        table: error.table,
+        column: error.column,
+        constraint: error.constraint,
+        file: error.file,
+        line: error.line,
+        routine: error.routine,
+        stack: error.stack
+    });
+
     // PostgreSQL error codes
     const pgErrorCodes = {
         '23505': 'Duplicate entry',

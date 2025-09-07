@@ -1,9 +1,16 @@
 import { Elysia } from 'elysia';
 import pool from '../db/connection.js';
+import { handleDatabaseError } from '../utils/errors.js';
 
 export const databasePlugin = new Elysia({ name: 'database' })
     .decorate('db', {
-        query: (text, params) => pool.query(text, params),
+        query: async (text, params) => {
+            try {
+                return await pool.query(text, params);
+            } catch (error) {
+                handleDatabaseError(error);
+            }
+        },
 
         // Transaction helper
         transaction: async (callback) => {
@@ -16,7 +23,7 @@ export const databasePlugin = new Elysia({ name: 'database' })
                 return result;
             } catch (error) {
                 await client.query('ROLLBACK');
-                throw error;
+                handleDatabaseError(error);
             } finally {
                 client.release();
             }
@@ -24,71 +31,87 @@ export const databasePlugin = new Elysia({ name: 'database' })
 
         // Get one record
         getOne: async (text, params) => {
-            const result = await pool.query(text, params);
-            return result.rows[0] || null;
+            try {
+                const result = await pool.query(text, params);
+                return result.rows[0] || null;
+            } catch (error) {
+                handleDatabaseError(error);
+            }
         },
 
         // Get many records
         getMany: async (text, params) => {
-            const result = await pool.query(text, params);
-            return result.rows;
+            try {
+                const result = await pool.query(text, params);
+                return result.rows;
+            } catch (error) {
+                handleDatabaseError(error);
+            }
         },
 
         // Insert and return record
         insert: async (table, data) => {
-            const keys = Object.keys(data);
-            const values = Object.values(data);
-            const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
+            try {
+                const keys = Object.keys(data);
+                const values = Object.values(data);
+                const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
 
-            const query = `
-        INSERT INTO ${table} (${keys.join(', ')})
-        VALUES (${placeholders})
-        RETURNING *
-      `;
+                const query = `
+            INSERT INTO ${table} (${keys.join(', ')})
+            VALUES (${placeholders})
+            RETURNING *
+          `;
 
-            const result = await pool.query(query, values);
-            return result.rows[0];
+                const result = await pool.query(query, values);
+                return result.rows[0];
+            } catch (error) {
+                handleDatabaseError(error);
+            }
         },
 
         // Update and return record
         update: async (table, data, where = {}) => {
-            // Handle both old signature (table, id, data) and new signature (table, data, where)
-            if (typeof data === 'string' || typeof data === 'number') {
-                // Old signature: update(table, id, data)
-                const id = data;
-                const actualData = where;
-                const keys = Object.keys(actualData);
-                const values = Object.values(actualData);
-                const setClause = keys.map((key, i) => `${key} = $${i + 2}`).join(', ');
+            try {
+                // Handle both old signature (table, id, data) and new signature (table, data, where)
+                if (typeof data === 'string' || typeof data === 'number') {
+                    // Old signature: update(table, id, data)
+                    const id = data;
+                    const actualData = where;
+                    const keys = Object.keys(actualData);
+                    const values = Object.values(actualData);
+                    const setClause = keys.map((key, i) => `${key} = $${i + 2}`).join(', ');
 
-                const query = `
-            UPDATE ${table}
-            SET ${setClause}, updated_at = CURRENT_TIMESTAMP
-            WHERE id = $1
-            RETURNING *
-          `;
+                    const query = `
+                UPDATE ${table}
+                SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1
+                RETURNING *
+              `;
 
-                const result = await pool.query(query, [id, ...values]);
-                return result.rows[0];
-            } else {
-                // New signature: update(table, data, where)
-                const keys = Object.keys(data);
-                const values = Object.values(data);
-                const whereKeys = Object.keys(where);
-                const whereValues = Object.values(where);
-                
-                const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
-                const whereClause = whereKeys.map((key, i) => `${key} = $${keys.length + i + 1}`).join(' AND ');
+                    const result = await pool.query(query, [id, ...values]);
+                    return result.rows[0];
+                } else {
+                    // New signature: update(table, data, where)
+                    const keys = Object.keys(data);
+                    const values = Object.values(data);
+                    const whereKeys = Object.keys(where);
+                    const whereValues = Object.values(where);
 
-                const query = `
-            UPDATE ${table}
-            SET ${setClause}
-            WHERE ${whereClause}
-            RETURNING *
-          `;
+                    const setClause = keys.map((key, i) => `${key} = $${i + 1}`).join(', ');
+                    const whereClause = whereKeys.map((key, i) => `${key} = $${keys.length + i + 1}`).join(' AND ');
 
-                const result = await pool.query(query, [...values, ...whereValues]);
-                return result.rows[0];
+                    const query = `
+                UPDATE ${table}
+                SET ${setClause}
+                WHERE ${whereClause}
+                RETURNING *
+              `;
+
+                    const result = await pool.query(query, [...values, ...whereValues]);
+                    return result.rows[0];
+                }
+            } catch (error) {
+                handleDatabaseError(error);
             }
         }
     });

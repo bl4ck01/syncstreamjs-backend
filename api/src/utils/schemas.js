@@ -27,10 +27,6 @@ export const updateProfileSchema = t.Object({
     is_kids_profile: t.Optional(t.Boolean())
 });
 
-export const selectProfileSchema = t.Object({
-    pin: t.Optional(t.String({ pattern: '^\\d{4}$' }))
-});
-
 // Playlist schemas
 export const createPlaylistSchema = t.Object({
     name: t.String({ minLength: 1, maxLength: 255 }),

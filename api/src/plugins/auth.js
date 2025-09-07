@@ -57,19 +57,30 @@ export const authPlugin = new Elysia({ name: 'auth' })
         return result.rows[0] || null;
       },
 
-      // Get current profile ID from JWT
-      getCurrentProfileId: async () => {
-        const payload = await getJWTPayload();
-        return payload?.current_profile_id || null;
-      },
-
       // Sign a new JWT token
-      signToken: async (userId, email, profileId = null) => {
+      signToken: async (userId, email) => {
         return await jwt.sign({
           userId,
-          email,
-          current_profile_id: profileId
+          email
         });
+      },
+
+      // Sign a profile selection JWT token
+      signProfileToken: async (userId, profileId) => {
+        return await jwt.sign({
+          userId,
+          profileId,
+          type: 'profile'
+        });
+      },
+
+      // Verify any JWT token string and return payload or null
+      verifyAnyToken: async (token) => {
+        try {
+          return await jwt.verify(token);
+        } catch {
+          return null;
+        }
       }
     };
   })

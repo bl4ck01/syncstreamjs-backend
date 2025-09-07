@@ -12,15 +12,32 @@ const logError = (error, context = {}) => {
     statusCode: error.statusCode || 500,
     stack: isDevelopment() ? error.stack : undefined,
     context,
-    ...error.details && { details: error.details }
+    ...error.details && { details: error.details },
+    // Always log original error details for debugging
+    originalError: {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      hint: error.hint,
+      position: error.position,
+      where: error.where,
+      schema: error.schema,
+      table: error.table,
+      column: error.column,
+      constraint: error.constraint,
+      file: error.file,
+      line: error.line,
+      routine: error.routine
+    }
   };
-  
+
   // In production, send to monitoring service
   if (!isDevelopment() && env.SENTRY_DSN) {
     // Sentry integration would go here
     // Sentry.captureException(error, { extra: context });
   }
-  
+
   console.error(JSON.stringify(errorLog, null, isDevelopment() ? 2 : 0));
 };
 
@@ -35,9 +52,9 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
       query: new URL(request.url).searchParams.toString(),
       ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
     };
-    
+
     logError(error, context);
-    
+
     // Handle different error types
     if (error instanceof AppError) {
       set.status = error.statusCode;
@@ -47,7 +64,7 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
         data: null
       };
     }
-    
+
     // Handle Elysia validation errors
     if (code === 'VALIDATION') {
       set.status = 400;
@@ -57,7 +74,7 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
         data: null
       };
     }
-    
+
     // Handle not found errors
     if (code === 'NOT_FOUND') {
       set.status = 404;
@@ -67,7 +84,7 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
         data: null
       };
     }
-    
+
     // Handle parse errors
     if (code === 'PARSE') {
       set.status = 400;
@@ -77,9 +94,17 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
         data: null
       };
     }
-    
-    // Database errors
-    if (error.code && error.code.startsWith('2') || error.code?.startsWith('5')) {
+
+    // Database errors - Enhanced detection
+    if (error.code && (
+      error.code.startsWith('2') ||
+      error.code.startsWith('5') ||
+      error.code.startsWith('42') ||  // PostgreSQL syntax errors
+      error.code.startsWith('23') ||  // PostgreSQL constraint violations
+      error.code.startsWith('08') ||  // PostgreSQL connection errors
+      error.code.startsWith('57') ||  // PostgreSQL admin errors
+      error.code.startsWith('53')     // PostgreSQL insufficient resources
+    )) {
       set.status = 500;
       return {
         success: false,
@@ -87,7 +112,27 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
         data: null
       };
     }
-    
+
+    // Additional database error patterns
+    if (error.message && (
+      error.message.includes('column') && error.message.includes('does not exist') ||
+      error.message.includes('table') && error.message.includes('does not exist') ||
+      error.message.includes('relation') && error.message.includes('does not exist') ||
+      error.message.includes('syntax error') ||
+      error.message.includes('permission denied') ||
+      error.message.includes('duplicate key') ||
+      error.message.includes('foreign key') ||
+      error.message.includes('not null') ||
+      error.message.includes('check constraint')
+    )) {
+      set.status = 500;
+      return {
+        success: false,
+        message: 'Database operation failed',
+        data: null
+      };
+    }
+
     // Default error response
     set.status = error.statusCode || 500;
     try {
@@ -110,7 +155,7 @@ export const errorHandlerPlugin = new Elysia({ name: 'errorHandler' })
     // Add request ID for tracking
     const requestId = crypto.randomUUID();
     set.headers['X-Request-ID'] = requestId;
-    
+
     // Log incoming request in development
     if (isDevelopment()) {
       console.log(`[${new Date().toISOString()}] ${request.method} ${request.url} - ID: ${requestId}`);

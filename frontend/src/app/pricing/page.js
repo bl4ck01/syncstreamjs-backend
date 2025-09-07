@@ -18,8 +18,8 @@ export default async function PricingPage() {
           id="tsparticlesfullpage"
           background="transparent"
           minSize={0.3}
-          maxSize={1.8}
-          particleDensity={120}
+          maxSize={2}
+          particleDensity={150}
           className="w-full h-full"
           particleColor="#e11d48" // rose-600 color
           speed={0.8}

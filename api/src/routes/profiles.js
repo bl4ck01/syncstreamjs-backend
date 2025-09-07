@@ -11,13 +11,43 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     // Get all profiles for user
     .get('/', async ({ userId, db }) => {
         const profiles = await db.getMany(
-            'SELECT id, name, avatar_url, is_kids_profile, created_at FROM profiles WHERE user_id = $1 AND is_active = true ORDER BY created_at',
+            'SELECT id, name, avatar_url, has_pin, is_kids_profile, created_at FROM profiles WHERE user_id = $1 AND is_active = true ORDER BY created_at',
             [userId]
         );
 
         return {
             success: true,
             data: profiles
+        };
+    })
+
+    // Get current selected profile using header token
+    .get('/current', async ({ db, userId, profileId }) => {
+        // profileId is provided by profileSelectionMiddleware when applied at app level
+        if (!profileId) {
+            return {
+                success: false,
+                message: 'Profile not selected',
+                data: null
+            };
+        }
+
+        const profile = await db.getOne(
+            'SELECT id, name, avatar_url, has_pin as parental_pin, is_kids_profile, created_at FROM profiles WHERE id = $1 AND user_id = $2 AND is_active = true',
+            [profileId, userId]
+        );
+
+        if (!profile) {
+            return {
+                success: false,
+                message: 'Profile not found',
+                data: null
+            };
+        }
+
+        return {
+            success: true,
+            data: profile
         };
     })
 
@@ -46,6 +76,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
                 name,
                 avatar_url,
                 parental_pin: parental_pin || null,
+                has_pin: !!(parental_pin && parental_pin.trim()),
                 is_kids_profile: is_kids_profile || false
             });
 
@@ -74,7 +105,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     })
 
     // Select profile for current session
-    .post('/:id/select', async ({ params, body, userId, db, signToken, getUser }) => {
+    .post('/:id/select', async ({ params, body, userId, db, signProfileToken }) => {
         const profileId = params.id;
 
         // Verify profile belongs to user
@@ -88,40 +119,47 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         }
 
         // Verify PIN if required (plain text comparison)
-        if (profile.parental_pin) {
+        if (profile.has_pin) {
             if (!body.pin) {
                 console.log(`[PROFILE] PIN required but not provided for profile ${profileId}`);
-                throw new Error('PIN required');
+                // throw new Error('PIN required');
+                return {
+                    success: false,
+                    message: 'PIN required',
+                    data: null
+                };
             }
 
             if (body.pin !== profile.parental_pin) {
                 console.log(`[PROFILE] Invalid PIN for profile ${profileId}`);
-                throw new Error('Invalid PIN');
+                // throw new Error('Invalid PIN');
+                return {
+                    success: false,
+                    message: 'Invalid PIN',
+                    data: null
+                };
             }
         }
 
-        // Get user email for JWT (Note: this is one case where we still need getUser)
-        const user = await getUser();
-
-        // Issue new JWT with selected profile
-        const token = await signToken(userId, user.email, profileId);
-
         // Remove sensitive data from profile
         delete profile.parental_pin;
+
+        // Issue profile JWT token to be stored by the frontend
+        const profileToken = await signProfileToken(userId, profileId);
 
         console.log(`[PROFILE] User ${userId} selected profile ${profileId}`);
 
         return {
             success: true,
             message: 'Profile selected successfully',
-            data: { profile, token }
+            data: { profile, profile_token: profileToken }
         };
     }, {
         params: t.Object({
             id: t.String({ format: 'uuid' })
         }),
         body: t.Object({
-            pin: t.Optional(t.String({ pattern: '^\\d{4}$' }))
+            pin: t.Optional(t.Union([t.String(), t.Null()]))
         })
     })
 
@@ -147,6 +185,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         // Handle parental PIN update
         if (body.parental_pin !== undefined) {
             updateData.parental_pin = body.parental_pin || null;
+            updateData.has_pin = !!(body.parental_pin && body.parental_pin.trim());
         }
 
         // Manually set updated_at since we removed the trigger

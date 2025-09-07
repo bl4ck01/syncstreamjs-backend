@@ -1,20 +1,22 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { authMiddleware, profileContextMiddleware } from '../middleware/auth.js';
+import { authMiddleware } from '../middleware/auth.js';
+import { profileSelectionMiddleware } from '../middleware/auth.js';
 import { updateProgressSchema } from '../utils/schemas.js';
 
 export const progressRoutes = new Elysia({ prefix: '/progress' })
     .use(authPlugin)
     .use(databasePlugin)
     .use(authMiddleware) // Apply auth middleware to all progress routes
-    .use(profileContextMiddleware) // Apply profile context to all progress routes
+    .use(profileSelectionMiddleware)
 
     // Get watch progress for current profile
-    .get('/', async ({ profile, db, query }) => {
+    .get('/', async ({ query, db, profileId }) => {
+
         // Build query
         let sqlQuery = 'SELECT * FROM watch_progress WHERE profile_id = $1';
-        const params = [profile.id];
+        const params = [profileId];
 
         if (query.type) {
             sqlQuery += ' AND item_type = $2';
@@ -46,7 +48,7 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
     })
 
     // Update watch progress
-    .put('/', async ({ body, profile, db }) => {
+    .put('/', async ({ body, db, profileId }) => {
         const {
             item_id,
             item_type,
@@ -77,7 +79,7 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
                 last_watched = CURRENT_TIMESTAMP
             RETURNING *
         `, [
-            profile.id,
+            profileId,
             item_id,
             item_type,
             progress_seconds,
@@ -95,11 +97,21 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
             data: progress.rows[0]
         };
     }, {
-        body: updateProgressSchema
+        body: t.Object({
+            item_id: t.String({ minLength: 1 }),
+            item_type: t.Union([
+                t.Literal('movie'),
+                t.Literal('episode')
+            ]),
+            progress_seconds: t.Number({ minimum: 0 }),
+            duration_seconds: t.Optional(t.Number({ minimum: 0 })),
+            completed: t.Optional(t.Boolean()),
+            metadata: t.Optional(t.Object({}))
+        })
     })
 
     // Get continue watching
-    .get('/continue-watching', async ({ profile, db, query }) => {
+    .get('/continue-watching', async ({ db, query, profileId }) => {
         const limit = query.limit || 20;
 
         const items = await db.getMany(`
@@ -109,7 +121,7 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
                 AND progress_seconds > 0
             ORDER BY last_watched DESC
             LIMIT $2
-        `, [profile.id, limit]);
+        `, [profileId, limit]);
 
         return {
             success: true,
@@ -123,10 +135,10 @@ export const progressRoutes = new Elysia({ prefix: '/progress' })
     })
 
     // Clear progress for item
-    .delete('/:itemId', async ({ params, profile, db }) => {
+    .delete('/:itemId', async ({ params, db, profileId }) => {
         const result = await db.query(
             'DELETE FROM watch_progress WHERE profile_id = $1 AND item_id = $2 RETURNING id',
-            [profile.id, params.itemId]
+            [profileId, params.itemId]
         );
 
         if (result.rowCount === 0) {

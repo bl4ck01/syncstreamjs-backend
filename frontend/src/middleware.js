@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 export async function middleware(request) {
     // Get token from cookie (raw JWT token)
     const token = request.cookies.get('token')?.value;
+    const profileToken = request.cookies.get('profile')?.value;
 
     const pathname = request.nextUrl.pathname;
 
@@ -60,6 +61,15 @@ export async function middleware(request) {
             return NextResponse.redirect(new URL('/pricing', request.url));
         }
 
+        // else if (validToken.user?.subscription_status !== 'none' && pathname === '/pricing') {
+        //     return NextResponse.redirect(new URL('/', request.url));
+        // }
+
+
+        else if (!profileToken && pathname !== '/profiles') {
+            return NextResponse.redirect(new URL('/profiles', request.url));
+        }
+
     }
 
     return NextResponse.next();
@@ -72,5 +82,6 @@ export const config = {
         '/pricing',
         '/',
         '/(app)/:path*',
+        '/profiles',
     ],
 };

@@ -22,6 +22,27 @@ export const authMiddleware = new Elysia({ name: 'auth-middleware' })
     });
 
 /**
+ * Profile selection middleware that validates the 'profile' JWT cookie and
+ * attaches the current profileId to the context.
+ */
+export const profileSelectionMiddleware = new Elysia({ name: 'profile-selection-middleware' })
+    .derive({ as: 'scoped' }, async ({ headers, verifyAnyToken, userId, set }) => {
+        const raw = headers['x-profile-token'] || headers['X-Profile-Token'];
+        if (!raw) {
+            set.status = 401;
+            throw new Error('Profile not selected');
+        }
+
+        const payload = await verifyAnyToken(raw);
+        if (!payload || payload.type !== 'profile' || payload.userId !== userId) {
+            set.status = 401;
+            throw new Error('Invalid profile session');
+        }
+
+        return { profileId: payload.profileId };
+    });
+
+/**
  * User context middleware that fetches complete user data including subscription info.
  * This middleware eliminates N+1 queries by using a single optimized JOIN.
  * 
@@ -193,34 +214,3 @@ export const activeSubscriptionMiddleware = new Elysia({ name: 'active-subscript
         return {};
     });
 
-/**
- * Profile context middleware that validates and attaches the current profile.
- * 
- * Dependencies: Must be used after authMiddleware
- * 
- * Usage:
- * - Apply to routes that need current profile context
- * - Validates profile belongs to user
- * - Provides complete profile object
- */
-export const profileContextMiddleware = new Elysia({ name: 'profile-context-middleware' })
-    .derive({ as: 'scoped' }, async ({ getCurrentProfileId, userId, db, set }) => {
-        const profileId = await getCurrentProfileId();
-        
-        if (!profileId) {
-            set.status = 400;
-            throw new Error('No profile selected. Please select a profile first.');
-        }
-        
-        const profile = await db.getOne(
-            'SELECT * FROM profiles WHERE id = $1 AND user_id = $2 AND is_active = true',
-            [profileId, userId]
-        );
-        
-        if (!profile) {
-            set.status = 403;
-            throw new Error('Invalid profile or profile does not belong to user');
-        }
-        
-        return { profile };
-    });

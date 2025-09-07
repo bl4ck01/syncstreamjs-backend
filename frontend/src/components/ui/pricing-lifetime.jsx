@@ -2,14 +2,14 @@
 import { cn } from "@/lib/utils";
 import NumberFlow from "@number-flow/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { 
-    CheckIcon, 
-    Users, 
-    Tv, 
-    Shield, 
-    Download, 
-    Headphones, 
-    Smartphone, 
+import {
+    CheckIcon,
+    Users,
+    Tv,
+    Shield,
+    Download,
+    Headphones,
+    Smartphone,
     PartyPopper,
     Zap,
     Star,
@@ -17,10 +17,13 @@ import {
     Crown,
     Sparkles
 } from "lucide-react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { createCheckoutSession } from "@/server/actions";
 import { useRouter } from "next/navigation";
+import { ShineBorder } from "./shine-border";
+import { BorderBeam } from "./border-beam";
+import { toast } from "sonner";
 
 // Map features to their icons
 const featureIcons = {
@@ -133,7 +136,7 @@ export default function PricingLifetime({ plans = [] }) {
                 {regularPlans.map((plan, idx) => (
                     <Plan key={plan.id} plan={plan} billPlan={billPlan} index={idx} router={router} isLifetime={false} />
                 ))}
-                
+
                 {/* Show lifetime plans after regular plans */}
                 {lifetimePlans.map((plan, idx) => (
                     <Plan key={plan.id} plan={plan} billPlan={billPlan} index={regularPlans.length + idx} router={router} isLifetime={true} />
@@ -156,7 +159,7 @@ const Plan = ({ plan, billPlan, index, router, isLifetime }) => {
     let currentPrice;
     let priceLabel;
     let billingText;
-    
+
     if (isLifetime) {
         currentPrice = lifetimePrice;
         priceLabel = "";
@@ -231,10 +234,12 @@ const Plan = ({ plan, billPlan, index, router, isLifetime }) => {
             if (response.success && response.data?.checkout_url) {
                 window.location.href = response.data.checkout_url;
             } else {
-                console.error('Failed to create checkout session:', response.message);
+                toast.error(response.message);
+                // console.error('Failed to create checkout session:', response.message);
             }
         } catch (error) {
-            console.error('Error creating checkout session:', error);
+            toast.error(error.message);
+            // console.error('Error creating checkout session:', error);
         } finally {
             setIsLoading(false);
         }
@@ -251,10 +256,36 @@ const Plan = ({ plan, billPlan, index, router, isLifetime }) => {
         >
             <div className={cn(
                 "relative flex flex-col h-full rounded-2xl backdrop-blur-sm border overflow-hidden transition-all duration-300",
-                isLifetime 
-                    ? "bg-gradient-to-br from-yellow-900/20 via-orange-900/20 to-red-900/20 border-yellow-500/50 hover:border-yellow-400 shadow-2xl scale-105" 
-                    : "bg-zinc-900/30 border-zinc-800 hover:border-rose-500/50"
+                isLifetime
+                    ? "bg-gradient-to-br from-yellow-900/20 via-orange-900/20 to-red-900/20 border-yellow-500/50 hover:border-yellow-400 shadow-2xl scale-105"
+                    : "bg-zinc-900/30 border-rose-900 hover:border-rose-500/50"
             )}>
+                {
+                    isLifetime ?
+                        // <ShineBorder shineColor={["#eab308", "#dc2626", "#eab308"]} />
+                        <React.Fragment>
+                            <BorderBeam
+                                duration={6}
+                                size={400}
+                                borderWidth={5}
+                                className="from-yellow-800/10 via-yellow-500 to-transparent"
+                            />
+                            <BorderBeam
+                                duration={6}
+                                delay={3}
+                                size={400}
+                                borderWidth={4}
+                                className="from-yellow-800/10 via-yellow-500 to-transparent"
+                            />
+                        </React.Fragment>
+                        :
+                        <BorderBeam
+                            duration={5}
+                            size={500}
+                            borderWidth={4}
+                            className="from-rose-800/10 via-rose-500 to-transparent"
+                        />
+                }
                 {/* Limited Time Badge for Lifetime Plan */}
                 {isLifetime && (
                     <motion.div
@@ -317,8 +348,8 @@ const Plan = ({ plan, billPlan, index, router, isLifetime }) => {
                         )}
                     </h3>
                     <p className="text-sm text-gray-400 mb-6">
-                        {isLifetime 
-                            ? "Get lifetime access to all premium features!" 
+                        {isLifetime
+                            ? "Get lifetime access to all premium features!"
                             : (plan.name === 'Basic' ? 'Perfect for individual users' : 'Ideal for families')
                         }
                     </p>
@@ -328,7 +359,7 @@ const Plan = ({ plan, billPlan, index, router, isLifetime }) => {
                         size="lg"
                         className={cn(
                             "w-full font-medium rounded-lg transition-all duration-200 text-lg py-6 relative z-10",
-                            isLifetime 
+                            isLifetime
                                 ? "bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black"
                                 : "bg-rose-600 hover:bg-rose-700 text-white"
                         )}
@@ -336,8 +367,8 @@ const Plan = ({ plan, billPlan, index, router, isLifetime }) => {
                         disabled={isLoading}
                     >
                         {isLoading ? 'Processing...' : (
-                            isLifetime 
-                                ? "Get Lifetime Access Now!" 
+                            isLifetime
+                                ? "Get Lifetime Access Now!"
                                 : (plan.trial_days > 0 ? `Start ${plan.trial_days}-day free trial` : "Get Started")
                         )}
                     </Button>
@@ -363,9 +394,9 @@ const Plan = ({ plan, billPlan, index, router, isLifetime }) => {
                                 >
                                     <IconComponent className={cn(
                                         "w-5 h-5 flex-shrink-0",
-                                        isLifetime && feature.icon === Crown 
-                                            ? "text-yellow-400" 
-                                            : "text-green-500"
+                                        isLifetime && feature.icon === Crown
+                                            ? "text-yellow-400"
+                                            : "text-white"
                                     )} />
                                     <span className="text-sm text-gray-300">{feature.text}</span>
                                 </motion.li>

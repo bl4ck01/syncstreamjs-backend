@@ -26,9 +26,16 @@ async function performRequest(path, options = {}) {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
+        // Add profile token from cookie if present
+        const profileToken = cookieStore.get('profile')?.value;
+        if (profileToken) {
+            headers['X-Profile-Token'] = profileToken;
+        }
+
         const response = await fetch(url, {
             ...options,
             headers,
+            credentials: 'include',
             signal: controller.signal
         });
 
@@ -119,6 +126,11 @@ export async function getUser() {
     return data;
 }
 
+export async function getCurrentProfile() {
+    const data = await performRequest('/profiles/current');
+    return data;
+}
+
 
 export async function getPlans() {
     const data = await performRequest('/subscriptions/plans/public');
@@ -128,10 +140,87 @@ export async function getPlans() {
 export async function createCheckoutSession(planId, billingPeriod = 'monthly') {
     const data = await performRequest('/subscriptions/checkout', {
         method: 'POST',
-        body: JSON.stringify({ 
+        body: JSON.stringify({
             plan_id: planId,
             billing_period: billingPeriod
         })
+    });
+    return data;
+}
+
+// Profile management actions
+export async function getProfiles() {
+    const data = await performRequest('/profiles');
+    return data;
+}
+
+export async function selectProfile(profileId, pin = null) {
+    const requestBody = {};
+
+    // Only include pin in request body if it's provided
+    if (pin && pin.trim()) {
+        requestBody.pin = pin;
+    }
+
+    const data = await performRequest(`/profiles/${profileId}/select`, {
+        method: 'POST',
+        body: JSON.stringify(requestBody)
+    });
+
+    if (data?.success && data?.data?.profile) {
+        // Also set/update the 'profile' cookie with token for subsequent requests
+        const cookieStore = await cookies();
+        if (data?.data?.profile_token) {
+            cookieStore.set('profile', data.data.profile_token, {
+                httpOnly: false,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax',
+                path: '/',
+                maxAge: 60 * 60 * 24 * 7
+            });
+        }
+        return {
+            ...data,
+            profileData: data.data.profile
+        };
+    }
+
+    return data;
+}
+
+export async function createProfile(name, avatarUrl = null, parentalPin = null, isKidsProfile = false) {
+    const requestBody = {
+        name,
+        is_kids_profile: isKidsProfile
+    };
+
+    // Only include optional fields if they have values
+    if (avatarUrl) {
+        requestBody.avatar_url = avatarUrl;
+    }
+
+    if (parentalPin) {
+        requestBody.parental_pin = parentalPin;
+    }
+
+    const data = await performRequest('/profiles', {
+        method: 'POST',
+        body: JSON.stringify(requestBody)
+    });
+    return data;
+}
+
+export async function updateProfile(profileId, updates) {
+    const data = await performRequest(`/profiles/${profileId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates)
+    });
+    return data;
+}
+
+export async function deleteProfile(profileId) {
+    const data = await performRequest(`/profiles/${profileId}`, {
+        method: 'DELETE'
     });
     return data;
 }

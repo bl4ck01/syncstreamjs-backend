@@ -126,7 +126,7 @@ export const subscriptionRoutes = new Elysia({ prefix: '/subscriptions' })
             set.status = 400;
             return {
                 success: false,
-                message: 'You already have an active subscription. Please use the change your plan instead.',
+                message: 'You already have an active subscription.',
                 data: null
             };
         }

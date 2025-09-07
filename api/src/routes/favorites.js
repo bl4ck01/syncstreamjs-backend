@@ -1,20 +1,22 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { authMiddleware, profileContextMiddleware } from '../middleware/auth.js';
+import { authMiddleware, profileSelectionMiddleware } from '../middleware/auth.js';
 import { addFavoriteSchema } from '../utils/schemas.js';
 
 export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
     .use(authPlugin)
     .use(databasePlugin)
     .use(authMiddleware) // Apply auth middleware to all favorites routes
-    .use(profileContextMiddleware) // Apply profile context to all favorites routes
+    .use(profileSelectionMiddleware)
 
     // Get favorites for current profile
-    .get('/', async ({ profile, db, query }) => {
+    .get('/', async ({ query, db, userId, profileId }) => {
+        // profileId already validated in middleware
+
         // Build query with optional type filter
         let sqlQuery = 'SELECT * FROM favorites WHERE profile_id = $1';
-        const params = [profile.id];
+        const params = [profileId];
 
         if (query.type) {
             sqlQuery += ' AND item_type = $2';
@@ -41,15 +43,17 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
     })
 
     // Add favorite
-    .post('/', async ({ body, profile, db }) => {
-        const validatedData = body;
+    .post('/', async ({ body, db, userId, profileId }) => {
+        const validatedData = { ...body, profile_id: profileId };
+
+        // profileId ownership validated in middleware
 
         // Note: Favorites feature is available to all users without limits
 
         // Try to insert favorite (will fail if duplicate)
         try {
             const favorite = await db.insert('favorites', {
-                profile_id: profile.id,
+                profile_id: validatedData.profile_id,
                 item_id: validatedData.item_id,
                 item_type: validatedData.item_type,
                 item_name: validatedData.item_name,
@@ -73,12 +77,12 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
     })
 
     // Remove favorite
-    .delete('/:itemId', async ({ params, profile, db }) => {
+    .delete('/:itemId', async ({ params, db, profileId }) => {
         const itemId = params.itemId;
 
         const result = await db.query(
             'DELETE FROM favorites WHERE profile_id = $1 AND item_id = $2 RETURNING id',
-            [profile.id, itemId]
+            [profileId, itemId]
         );
 
         if (result.rowCount === 0) {
@@ -93,16 +97,17 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
     }, {
         params: t.Object({
             itemId: t.String()
-        })
+        }),
+        query: t.Object({})
     })
 
     // Check if item is favorited
-    .get('/check/:itemId', async ({ params, profile, db }) => {
+    .get('/check/:itemId', async ({ params, db, profileId }) => {
         const itemId = params.itemId;
 
         const favorite = await db.getOne(
             'SELECT id FROM favorites WHERE profile_id = $1 AND item_id = $2',
-            [profile.id, itemId]
+            [profileId, itemId]
         );
 
         return {
@@ -113,5 +118,6 @@ export const favoritesRoutes = new Elysia({ prefix: '/favorites' })
     }, {
         params: t.Object({
             itemId: t.String()
-        })
+        }),
+        query: t.Object({})
     });

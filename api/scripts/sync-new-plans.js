@@ -24,7 +24,7 @@ const newPlans = [
         isLifetime: false,
         metadata: {
             max_profiles: '1',
-            trial_days: '7',
+            trial_days: '3',
             cine_party: 'false',
             sync_data_across_devices: 'true',
             record_live_tv: 'false',
@@ -43,7 +43,7 @@ const newPlans = [
         isLifetime: false,
         metadata: {
             max_profiles: '5',
-            trial_days: '7',
+            trial_days: '3',
             cine_party: 'true',
             sync_data_across_devices: 'true',
             record_live_tv: 'true',

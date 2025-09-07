@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     name_lower VARCHAR(100) GENERATED ALWAYS AS (LOWER(name)) STORED,
     avatar_url VARCHAR(500),
     parental_pin VARCHAR(4), -- Plain text parental PIN
+    has_pin BOOLEAN DEFAULT FALSE, -- Track if profile has a PIN set
     is_kids_profile BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
