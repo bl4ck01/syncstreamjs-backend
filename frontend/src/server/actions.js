@@ -126,11 +126,6 @@ export async function getUser() {
     return data;
 }
 
-export async function getCurrentProfile() {
-    const data = await performRequest('/profiles/current');
-    return data;
-}
-
 
 export async function getPlans() {
     const data = await performRequest('/subscriptions/plans/public');
@@ -151,6 +146,11 @@ export async function createCheckoutSession(planId, billingPeriod = 'monthly') {
 // Profile management actions
 export async function getProfiles() {
     const data = await performRequest('/profiles');
+    return data;
+}
+
+export async function getCurrentProfile() {
+    const data = await performRequest('/profiles/current');
     return data;
 }
 
@@ -225,18 +225,19 @@ export async function deleteProfile(profileId) {
     return data;
 }
 
+
 export async function getAvatarList() {
     try {
         const fs = await import('fs');
         const path = await import('path');
-        
+
         // Try multiple possible paths for the avatars directory
         const possiblePaths = [
             path.join(process.cwd(), 'frontend', 'public', 'avatars'), // From project root
             path.join(process.cwd(), 'public', 'avatars'), // From frontend directory
             path.join(process.cwd(), 'avatars') // Direct avatars directory
         ];
-        
+
         let avatarsDir = null;
         for (const dirPath of possiblePaths) {
             if (fs.existsSync(dirPath)) {
@@ -244,17 +245,17 @@ export async function getAvatarList() {
                 break;
             }
         }
-        
+
         if (!avatarsDir) {
             return {
                 success: false,
                 message: 'Avatars directory not found in any expected location'
             };
         }
-        
+
         // Read all files in the avatars directory
         const files = fs.readdirSync(avatarsDir);
-        
+
         // Filter only image files and create links
         const avatarLinks = files
             .filter(file => {
@@ -262,7 +263,7 @@ export async function getAvatarList() {
                 return ['.jpeg', '.jpg', '.png', '.gif', '.webp'].includes(ext);
             })
             .map(file => `/avatars/${file}`);
-        
+
         return {
             success: true,
             data: avatarLinks,

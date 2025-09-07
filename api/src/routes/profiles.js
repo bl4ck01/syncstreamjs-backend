@@ -1,13 +1,13 @@
 import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
-import { authMiddleware, userContextMiddleware, activeSubscriptionMiddleware } from '../middleware/auth.js';
+import { authMiddleware, userContextMiddleware, activeSubscriptionMiddleware, profileSelectionMiddleware } from '../middleware/auth.js';
 
 export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .use(authPlugin)
     .use(databasePlugin)
     .use(authMiddleware) // Apply auth middleware to all profile routes
-    
+
     // Get all profiles for user
     .get('/', async ({ userId, db }) => {
         const profiles = await db.getMany(
@@ -22,8 +22,9 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     })
 
     // Get current selected profile using header token
+    .use(profileSelectionMiddleware)
     .get('/current', async ({ db, userId, profileId }) => {
-        // profileId is provided by profileSelectionMiddleware when applied at app level
+        // profileId is provided by profileSelectionMiddleware
         if (!profileId) {
             return {
                 success: false,
@@ -98,7 +99,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     }, {
         body: t.Object({
             name: t.String({ minLength: 1, maxLength: 100 }),
-            avatar_url: t.Optional(t.String({ format: 'uri' })),
+            avatar_url: t.Optional(t.String()),
             parental_pin: t.Optional(t.String({ pattern: '^\\d{4}$' })),
             is_kids_profile: t.Optional(t.Boolean())
         })
