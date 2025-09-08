@@ -60,24 +60,6 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Profiles table
-CREATE TABLE IF NOT EXISTS profiles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name VARCHAR(100) NOT NULL CHECK (LENGTH(TRIM(name)) > 0),
-    name_lower VARCHAR(100) GENERATED ALWAYS AS (LOWER(name)) STORED,
-    avatar_url VARCHAR(500),
-    parental_pin VARCHAR(4), -- Plain text parental PIN
-    has_pin BOOLEAN DEFAULT FALSE, -- Track if profile has a PIN set
-    is_kids_profile BOOLEAN DEFAULT FALSE,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT NULL, -- Optional, can be updated manually by the app
-    
-    -- Unique constraint for case-insensitive profile names per user
-    CONSTRAINT unique_user_profile_name_case_insensitive UNIQUE (user_id, name_lower)
-);
-
 -- Playlists table
 CREATE TABLE IF NOT EXISTS playlists (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -89,6 +71,25 @@ CREATE TABLE IF NOT EXISTS playlists (
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Profiles table
+CREATE TABLE IF NOT EXISTS profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL CHECK (LENGTH(TRIM(name)) > 0),
+    name_lower VARCHAR(100) GENERATED ALWAYS AS (LOWER(name)) STORED,
+    avatar_url VARCHAR(500),
+    parental_pin VARCHAR(4), -- Plain text parental PIN
+    has_pin BOOLEAN DEFAULT FALSE, -- Track if profile has a PIN set
+    is_kids_profile BOOLEAN DEFAULT FALSE,
+    default_playlist_id UUID REFERENCES playlists(id) ON DELETE SET NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT NULL, -- Optional, can be updated manually by the app
+    
+    -- Unique constraint for case-insensitive profile names per user
+    CONSTRAINT unique_user_profile_name_case_insensitive UNIQUE (user_id, name_lower)
 );
 
 -- Favorites table
@@ -184,6 +185,7 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_user_status ON subscriptions(user_i
 -- Profiles table indexes
 CREATE INDEX IF NOT EXISTS idx_profiles_user_active ON profiles(user_id) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_profiles_kids ON profiles(user_id, is_kids_profile) WHERE is_kids_profile = true;
+CREATE INDEX IF NOT EXISTS idx_profiles_default_playlist ON profiles(default_playlist_id);
 
 -- Playlists table indexes
 CREATE INDEX IF NOT EXISTS idx_playlists_user_active ON playlists(user_id, is_active);
@@ -298,6 +300,101 @@ CREATE TRIGGER update_playlists_updated_at
     BEFORE UPDATE ON playlists
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- DEFAULT PLAYLIST ASSIGNMENT TRIGGERS
+-- ============================================
+
+-- Function: when a playlist is inserted, assign it as default to any profiles of the user that have no default
+CREATE OR REPLACE FUNCTION assign_default_playlist_on_insert()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Assign the newly created playlist as default for any profiles without a default
+    UPDATE profiles
+    SET default_playlist_id = NEW.id,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE user_id = NEW.user_id
+      AND default_playlist_id IS NULL;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function: when a playlist is soft-deleted (is_active turns false), reassign profiles' defaults
+CREATE OR REPLACE FUNCTION reassign_default_playlist_on_soft_delete()
+RETURNS TRIGGER AS $$
+DECLARE
+    replacement_playlist UUID;
+BEGIN
+    IF TG_OP = 'UPDATE' AND OLD.is_active = true AND NEW.is_active = false THEN
+        -- Find another active playlist for this user (prefer most recent)
+        SELECT id INTO replacement_playlist
+        FROM playlists
+        WHERE user_id = NEW.user_id AND is_active = true AND id <> NEW.id
+        ORDER BY created_at DESC
+        LIMIT 1;
+
+        IF replacement_playlist IS NOT NULL THEN
+            UPDATE profiles
+            SET default_playlist_id = replacement_playlist,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE default_playlist_id = NEW.id;
+        ELSE
+            UPDATE profiles
+            SET default_playlist_id = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE default_playlist_id = NEW.id;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function: when a playlist is hard-deleted, reassign profiles' defaults
+CREATE OR REPLACE FUNCTION reassign_default_playlist_on_delete()
+RETURNS TRIGGER AS $$
+DECLARE
+    replacement_playlist UUID;
+BEGIN
+    -- Find another active playlist for this user (prefer most recent)
+    SELECT id INTO replacement_playlist
+    FROM playlists
+    WHERE user_id = OLD.user_id AND is_active = true AND id <> OLD.id
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+    IF replacement_playlist IS NOT NULL THEN
+        UPDATE profiles
+        SET default_playlist_id = replacement_playlist,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE default_playlist_id = OLD.id;
+    ELSE
+        UPDATE profiles
+        SET default_playlist_id = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE default_playlist_id = OLD.id;
+    END IF;
+
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Triggers
+CREATE TRIGGER playlists_after_insert
+    AFTER INSERT ON playlists
+    FOR EACH ROW
+    EXECUTE FUNCTION assign_default_playlist_on_insert();
+
+CREATE TRIGGER playlists_after_soft_delete
+    AFTER UPDATE OF is_active ON playlists
+    FOR EACH ROW
+    EXECUTE FUNCTION reassign_default_playlist_on_soft_delete();
+
+CREATE TRIGGER playlists_after_delete
+    AFTER DELETE ON playlists
+    FOR EACH ROW
+    EXECUTE FUNCTION reassign_default_playlist_on_delete();
 
 -- Trigger for watch_progress table
 CREATE TRIGGER update_watch_progress_updated_at

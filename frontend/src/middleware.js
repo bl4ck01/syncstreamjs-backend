@@ -42,11 +42,13 @@ export async function middleware(request) {
             // If currently on login, allow access and drop cookie to avoid loops
             if (pathname === '/auth/login') {
                 const res = NextResponse.next();
+                console.log('CASE 1: delete token cookie');
                 res.cookies.delete('token');
                 return res;
             }
             // Protected page: drop cookie and go to login
             const res = NextResponse.redirect(new URL('/auth/login', request.url));
+            console.log('CASE 2: delete token cookie');
             res.cookies.delete('token');
             return res;
         }

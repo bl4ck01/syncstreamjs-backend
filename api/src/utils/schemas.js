@@ -17,14 +17,16 @@ export const createProfileSchema = t.Object({
     name: t.String({ minLength: 1, maxLength: 100 }),
     avatar_url: t.Optional(t.String({ format: 'url' })),
     parental_pin: t.Optional(t.String({ pattern: '^\\d{4}$' })),
-    is_kids_profile: t.Optional(t.Boolean())
+    is_kids_profile: t.Optional(t.Boolean()),
+    default_playlist_id: t.Optional(t.String({ format: 'uuid' }))
 });
 
 export const updateProfileSchema = t.Object({
     name: t.Optional(t.String({ minLength: 1, maxLength: 100 })),
     avatar_url: t.Optional(t.String({ format: 'url' })),
     parental_pin: t.Optional(t.String({ pattern: '^\\d{4}$' })),
-    is_kids_profile: t.Optional(t.Boolean())
+    is_kids_profile: t.Optional(t.Boolean()),
+    default_playlist_id: t.Optional(t.String({ format: 'uuid' }))
 });
 
 // Playlist schemas

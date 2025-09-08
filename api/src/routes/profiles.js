@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
 import { authMiddleware, userContextMiddleware, activeSubscriptionMiddleware, profileSelectionMiddleware } from '../middleware/auth.js';
+import env from '../utils/env.js';
 
 export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .use(authPlugin)
@@ -11,53 +12,48 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
     // Get all profiles for user
     .get('/', async ({ userId, db }) => {
         const profiles = await db.getMany(
-            'SELECT id, name, avatar_url, has_pin, is_kids_profile, created_at FROM profiles WHERE user_id = $1 AND is_active = true ORDER BY created_at',
+            'SELECT id, name, avatar_url, has_pin, is_kids_profile, default_playlist_id, created_at FROM profiles WHERE user_id = $1 AND is_active = true ORDER BY created_at',
             [userId]
         );
 
         return {
             success: true,
-            data: profiles
+            data: profiles,
+            can_add_profile: profiles.length < (env.MAX_PROFILES || 5)
         };
     })
 
-    // Get current selected profile using header token
-    .use(profileSelectionMiddleware)
-    .get('/current', async ({ db, userId, profileId }) => {
-        // profileId is provided by profileSelectionMiddleware
-        if (!profileId) {
-            return {
-                success: false,
-                message: 'Profile not selected',
-                data: null
-            };
-        }
+    // Get current selected profile using header token via scoped middleware (no cookies, no guard)
+    .group('/current', (app) =>
+        app
+            .use(profileSelectionMiddleware)
+            .get('', async ({ db, userId, profileId }) => {
+                const profile = await db.getOne(
+                    'SELECT id, name, avatar_url, has_pin as parental_pin, is_kids_profile, default_playlist_id, created_at FROM profiles WHERE id = $1 AND user_id = $2 AND is_active = true',
+                    [profileId, userId]
+                );
 
-        const profile = await db.getOne(
-            'SELECT id, name, avatar_url, has_pin as parental_pin, is_kids_profile, created_at FROM profiles WHERE id = $1 AND user_id = $2 AND is_active = true',
-            [profileId, userId]
-        );
+                if (!profile) {
+                    return {
+                        success: false,
+                        message: 'Profile not found',
+                        data: null
+                    };
+                }
 
-        if (!profile) {
-            return {
-                success: false,
-                message: 'Profile not found',
-                data: null
-            };
-        }
+                return {
+                    success: true,
+                    data: profile
+                };
+            })
+    )
 
-        return {
-            success: true,
-            data: profile
-        };
-    })
-
-    // Create new profile - requires active subscription
+    // Create new profile - requires active subscription (no profile selection required)
     .use(userContextMiddleware)
     .use(activeSubscriptionMiddleware)
     .post('/', async ({ body, userId, user, db }) => {
         // Body is already validated by Elysia
-        const { name, avatar_url, parental_pin, is_kids_profile } = body;
+        const { name, avatar_url, parental_pin, is_kids_profile, default_playlist_id } = body;
 
         // Check profile count against plan limit (plan already loaded in middleware)
         const profileCount = await db.getOne(
@@ -65,12 +61,31 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             [userId]
         );
 
-        const maxProfiles = user.subscription?.plan?.max_profiles || 0;
-        if (maxProfiles !== -1 && parseInt(profileCount.count) >= maxProfiles) {
-            throw new Error(`Plan limit reached. Maximum profiles: ${maxProfiles}`);
+        // First check against global MAX_PROFILES limit
+        const globalMaxProfiles = env.MAX_PROFILES || 5;
+        if (parseInt(profileCount.count) >= globalMaxProfiles) {
+            throw new Error(`Maximum profile limit reached. Maximum profiles: ${globalMaxProfiles}`);
+        }
+
+        // Then check against plan limit if applicable
+        const planMaxProfiles = user.subscription?.plan?.max_profiles || 0;
+        if (planMaxProfiles !== -1 && parseInt(profileCount.count) >= planMaxProfiles) {
+            throw new Error(`Plan limit reached. Maximum profiles: ${planMaxProfiles}`);
         }
 
         try {
+            // Optional: validate provided default_playlist_id belongs to user (and active)
+            let resolvedDefaultPlaylistId = null;
+            if (default_playlist_id) {
+                const owns = await db.getOne(
+                    'SELECT id FROM playlists WHERE id = $1 AND user_id = $2 AND is_active = true',
+                    [default_playlist_id, userId]
+                );
+                if (owns) {
+                    resolvedDefaultPlaylistId = default_playlist_id;
+                }
+            }
+
             // Create profile with plain text PIN
             const profile = await db.insert('profiles', {
                 user_id: userId,
@@ -78,7 +93,8 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
                 avatar_url,
                 parental_pin: parental_pin || null,
                 has_pin: !!(parental_pin && parental_pin.trim()),
-                is_kids_profile: is_kids_profile || false
+                is_kids_profile: is_kids_profile || false,
+                default_playlist_id: resolvedDefaultPlaylistId
             });
 
             // Remove sensitive data
@@ -101,7 +117,8 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             name: t.String({ minLength: 1, maxLength: 100 }),
             avatar_url: t.Optional(t.String()),
             parental_pin: t.Optional(t.String({ pattern: '^\\d{4}$' })),
-            is_kids_profile: t.Optional(t.Boolean())
+            is_kids_profile: t.Optional(t.Boolean()),
+            default_playlist_id: t.Optional(t.String({ format: 'uuid' }))
         })
     })
 
@@ -164,14 +181,20 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         })
     })
 
-    // Update profile
-    .patch('/:id', async ({ params, body, userId, db }) => {
-        const profileId = params.id;
+    // Update profile (scoped)
+    .guard({ use: [profileSelectionMiddleware] })
+    .put('/:id', async ({ params, body, userId, profileId, db, set }) => {
+
+        // Require that the selected profile matches the profile being updated
+        if (!profileId || profileId !== params.id) {
+            set.status = 401;
+            throw new Error('Profile not selected');
+        }
 
         // Verify ownership
         const existing = await db.getOne(
             'SELECT id FROM profiles WHERE id = $1 AND user_id = $2',
-            [profileId, userId]
+            [params.id, userId]
         );
 
         if (!existing) {
@@ -183,6 +206,19 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         if (body.avatar_url !== undefined) updateData.avatar_url = body.avatar_url;
         if (body.is_kids_profile !== undefined) updateData.is_kids_profile = body.is_kids_profile;
 
+        // Validate and set default playlist change if present
+        if (body.default_playlist_id !== undefined) {
+            if (body.default_playlist_id === null) {
+                updateData.default_playlist_id = null;
+            } else {
+                const owns = await db.getOne(
+                    'SELECT id FROM playlists WHERE id = $1 AND user_id = $2 AND is_active = true',
+                    [body.default_playlist_id, userId]
+                );
+                updateData.default_playlist_id = owns ? body.default_playlist_id : null;
+            }
+        }
+
         // Handle parental PIN update
         if (body.parental_pin !== undefined) {
             updateData.parental_pin = body.parental_pin || null;
@@ -193,7 +229,7 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
         updateData.updated_at = new Date();
 
         try {
-            const profile = await db.update('profiles', updateData, { id: profileId });
+            const profile = await db.update('profiles', updateData, { id: params.id });
             delete profile.parental_pin;
 
             return {
@@ -216,7 +252,8 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             name: t.Optional(t.String({ minLength: 1, maxLength: 100 })),
             avatar_url: t.Optional(t.String({ format: 'uri' })),
             parental_pin: t.Optional(t.String({ pattern: '^\\d{4}$' })),
-            is_kids_profile: t.Optional(t.Boolean())
+            is_kids_profile: t.Optional(t.Boolean()),
+            default_playlist_id: t.Optional(t.Union([t.String({ format: 'uuid' }), t.Null()]))
         })
     })
 

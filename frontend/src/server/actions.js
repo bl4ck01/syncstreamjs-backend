@@ -28,8 +28,9 @@ async function performRequest(path, options = {}) {
 
         // Add profile token from cookie if present
         const profileToken = cookieStore.get('profile')?.value;
+
         if (profileToken) {
-            headers['X-Profile-Token'] = profileToken;
+            headers['x-profile-token'] = profileToken;
         }
 
         const response = await fetch(url, {
@@ -149,6 +150,11 @@ export async function getProfiles() {
     return data;
 }
 
+export async function getPlaylists() {
+    const data = await performRequest('/playlists');
+    return data;
+}
+
 export async function getCurrentProfile() {
     const data = await performRequest('/profiles/current');
     return data;
@@ -188,7 +194,7 @@ export async function selectProfile(profileId, pin = null) {
     return data;
 }
 
-export async function createProfile(name, avatarUrl = null, parentalPin = null, isKidsProfile = false) {
+export async function createProfile(name, avatarUrl = null, parentalPin = null, isKidsProfile = false, defaultPlaylistId = undefined) {
     const requestBody = {
         name,
         is_kids_profile: isKidsProfile
@@ -201,6 +207,10 @@ export async function createProfile(name, avatarUrl = null, parentalPin = null, 
 
     if (parentalPin) {
         requestBody.parental_pin = parentalPin;
+    }
+
+    if (defaultPlaylistId) {
+        requestBody.default_playlist_id = defaultPlaylistId;
     }
 
     const data = await performRequest('/profiles', {

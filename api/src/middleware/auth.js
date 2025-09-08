@@ -26,8 +26,11 @@ export const authMiddleware = new Elysia({ name: 'auth-middleware' })
  * attaches the current profileId to the context.
  */
 export const profileSelectionMiddleware = new Elysia({ name: 'profile-selection-middleware' })
-    .derive({ as: 'scoped' }, async ({ headers, verifyAnyToken, userId, set }) => {
-        const raw = headers['x-profile-token'] || headers['X-Profile-Token'];
+    .derive({ as: 'scoped' }, async ({ headers, request, verifyAnyToken, userId, set }) => {
+        let raw = request?.headers?.get('x-profile-token');
+        if (!raw && headers) {
+            raw = headers['x-profile-token'] || headers['X-Profile-Token'];
+        }
         if (!raw) {
             set.status = 401;
             throw new Error('Profile not selected');

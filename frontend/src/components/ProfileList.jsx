@@ -8,12 +8,21 @@ import PinModal from './PinModal';
 import { useRouter } from 'next/navigation';
 import { selectProfile } from '@/server/actions';
 import { toast } from 'sonner';
+import { AddProfileDialog } from './AddProfileDialog';
 
-export default function ProfileList({ profiles }) {
+export default function ProfileList({ profiles, canAddProfile, onProfilesUpdate }) {
     const [showPinModal, setShowPinModal] = useState(false);
     const [selectedProfile, setSelectedProfile] = useState(null);
 
     const router = useRouter();
+
+    const handleProfileCreated = () => {
+        if (typeof onProfilesUpdate === 'function') {
+            onProfilesUpdate();
+        } else {
+            router.refresh();
+        }
+    };
 
     const handleProfileClick = async (profile) => {
         if (profile.has_pin) {
@@ -116,6 +125,21 @@ export default function ProfileList({ profiles }) {
                             </div>
                         </motion.div>
                     ))}
+
+                    {/* Add Profile Button */}
+                    {canAddProfile && (
+                        <motion.div
+                            initial="hidden"
+                            animate="visible"
+                            transition={{ duration: 0.5, delay: 0.25 + profiles.length * 0.09 }}
+                            variants={{
+                                hidden: { filter: "blur(10px)", opacity: 0 },
+                                visible: { filter: "blur(0px)", opacity: 1 },
+                            }}
+                        >
+                            <AddProfileDialog onProfileCreated={handleProfileCreated} />
+                        </motion.div>
+                    )}
                 </div>
 
                 {/* Manage Profiles Button */}

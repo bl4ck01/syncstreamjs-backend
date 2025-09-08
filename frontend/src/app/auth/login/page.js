@@ -36,14 +36,12 @@ export default function Login() {
         try {
             // Simulate API call
             const response = await login(data.email, data.password);
-            console.log("Login data:", response);
             if (response.success) {
                 router.push("/");
             } else {
                 toast.error(response.message);
             }
         } catch (error) {
-            console.error("Login error:", error);
             toast.error(error.message || "An error occurred, please try again.");
         } finally {
             setIsLoading(false);
