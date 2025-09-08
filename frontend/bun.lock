@@ -5,6 +5,7 @@
       "name": "frontend",
       "dependencies": {
         "@duckdb/duckdb-wasm": "^1.29.1-dev132.0",
+        "@fontsource/figtree": "^5.2.8",
         "@hookform/resolvers": "^5.2.1",
         "@number-flow/react": "^0.5.10",
         "@radix-ui/react-avatar": "^1.1.10",
@@ -74,6 +75,8 @@
     "@eslint/object-schema": ["@eslint/object-schema@2.1.6", "", {}, "sha512-RBMg5FRL0I0gs51M/guSAj5/e14VQ4tpZnQNWwuDT66P14I43ItmPfIZRhO9fUVIPOAQXU47atlywZ/czoqFPA=="],
 
     "@eslint/plugin-kit": ["@eslint/plugin-kit@0.3.5", "", { "dependencies": { "@eslint/core": "^0.15.2", "levn": "^0.4.1" } }, "sha512-Z5kJ+wU3oA7MMIqVR9tyZRtjYPr4OC004Q4Rw7pgOKUOKkJfZ3O24nz3WYfGRpMDNmcOi3TwQOmgm7B7Tpii0w=="],
+
+    "@fontsource/figtree": ["@fontsource/figtree@5.2.8", "", {}, "sha512-FC+t9RSdZDUK402+h+D7kKBXEo1L5xw/ff8SpTo9ZO0xHzqFJ0u78PmNyAju5D77oXPsR3wfs+rjZvWPx4diSA=="],
 
     "@hookform/resolvers": ["@hookform/resolvers@5.2.1", "", { "dependencies": { "@standard-schema/utils": "^0.3.0" }, "peerDependencies": { "react-hook-form": "^7.55.0" } }, "sha512-u0+6X58gkjMcxur1wRWokA7XsiiBJ6aK17aPZxhkoYiK5J+HcTx0Vhu9ovXe6H+dVpO6cjrn2FkJTryXEMlryQ=="],
 

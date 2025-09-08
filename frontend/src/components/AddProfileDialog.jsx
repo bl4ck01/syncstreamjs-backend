@@ -247,10 +247,15 @@ export function AddProfileDialog({ onProfileCreated }) {
               variant="outline"
               onClick={() => setOpen(false)}
               disabled={loading}
+              className="text-neutral-500 border-neutral-600 bg-neutral-100 hover:bg-neutral-200 hover:text-neutral-900"
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || !profileName.trim()}>
+            <Button
+              type="submit"
+              disabled={loading || !profileName.trim()}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+            >
               {loading ? 'Creating...' : 'Create Profile'}
             </Button>
           </DialogFooter>
@@ -304,7 +309,13 @@ export function AddProfileDialog({ onProfileCreated }) {
             </AnimatePresence>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAvatarDialogOpen(false)}>Close</Button>
+            <Button
+              variant="outline"
+              onClick={() => setAvatarDialogOpen(false)}
+              className="text-neutral-800 border-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
+            >
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
