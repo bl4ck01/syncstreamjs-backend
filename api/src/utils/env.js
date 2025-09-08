@@ -79,6 +79,9 @@ const envSchema = z.object({
 
     // Support configuration
     SUPPORT_EMAIL: z.string().email().optional(),
+
+    // Profile limits
+    MAX_PROFILES: z.string().transform(Number).default('5'),
 });
 
 // Validate and parse environment variables

@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia';
 import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
 import { authMiddleware, userContextMiddleware, activeSubscriptionMiddleware, profileSelectionMiddleware } from '../middleware/auth.js';
+import env from '../utils/env.js';
 
 export const profileRoutes = new Elysia({ prefix: '/profiles' })
     .use(authPlugin)
@@ -15,9 +16,15 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             [userId]
         );
 
+        // Check if user can add more profiles
+        const profileCount = profiles.length;
+        const maxProfiles = env.MAX_PROFILES || 5;
+        const canAddProfile = profileCount < maxProfiles;
+
         return {
             success: true,
-            data: profiles
+            data: profiles,
+            can_add_profile: canAddProfile
         };
     })
 
@@ -65,9 +72,16 @@ export const profileRoutes = new Elysia({ prefix: '/profiles' })
             [userId]
         );
 
-        const maxProfiles = user.subscription?.plan?.max_profiles || 0;
-        if (maxProfiles !== -1 && parseInt(profileCount.count) >= maxProfiles) {
-            throw new Error(`Plan limit reached. Maximum profiles: ${maxProfiles}`);
+        // First check against global MAX_PROFILES limit
+        const globalMaxProfiles = env.MAX_PROFILES || 5;
+        if (parseInt(profileCount.count) >= globalMaxProfiles) {
+            throw new Error(`Maximum profile limit reached. Maximum profiles: ${globalMaxProfiles}`);
+        }
+        
+        // Then check against plan limit if applicable
+        const planMaxProfiles = user.subscription?.plan?.max_profiles || 0;
+        if (planMaxProfiles !== -1 && parseInt(profileCount.count) >= planMaxProfiles) {
+            throw new Error(`Plan limit reached. Maximum profiles: ${planMaxProfiles}`);
         }
 
         try {

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Profile System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .profile {
+            display: inline-block;
+            margin: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+        .profile img {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: block;
+            margin-bottom: 5px;
+        }
+        #log {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Profile System Test</h1>
+
+    <div class="section">
+        <h2>1. Login</h2>
+        <input type="email" id="email" placeholder="Email" value="test@example.com">
+        <input type="password" id="password" placeholder="Password" value="testpassword">
+        <button onclick="login()">Login</button>
+    </div>
+
+    <div class="section">
+        <h2>2. Get Profiles</h2>
+        <button onclick="getProfiles()">Get Profiles</button>
+        <div id="profiles"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. Create New Profile</h2>
+        <input type="text" id="profileName" placeholder="Profile Name">
+        <input type="text" id="profilePin" placeholder="PIN (4 digits)" maxlength="4">
+        <label>
+            <input type="checkbox" id="isKidsProfile"> Kids Profile
+        </label>
+        <button onclick="createProfile()">Create Profile</button>
+    </div>
+
+    <div class="section">
+        <h2>Log</h2>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api/v1';
+        let authToken = null;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+            logDiv.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await fetch(`${API_URL}/auth/signup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        full_name: 'Test User',
+                        email, 
+                        password 
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (!data.success) {
+                    // Try to login if signup fails (user might already exist)
+                    const loginResponse = await fetch(`${API_URL}/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    
+                    const loginData = await loginResponse.json();
+                    if (loginData.success) {
+                        authToken = loginData.data.token;
+                        log('Login successful!', 'success');
+                    } else {
+                        log(`Login failed: ${loginData.message}`, 'error');
+                    }
+                } else {
+                    authToken = data.data.token;
+                    log('Signup successful!', 'success');
+                }
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function getProfiles() {
+            if (!authToken) {
+                log('Please login first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/profiles`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    const profilesDiv = document.getElementById('profiles');
+                    profilesDiv.innerHTML = '';
+                    
+                    log(`Found ${data.data.length} profiles. Can add profile: ${data.can_add_profile}`, 'success');
+                    
+                    data.data.forEach(profile => {
+                        const profileEl = document.createElement('div');
+                        profileEl.className = 'profile';
+                        profileEl.innerHTML = `
+                            <img src="${profile.avatar_url || '/avatars/default.jpg'}" alt="${profile.name}">
+                            <strong>${profile.name}</strong>
+                            ${profile.has_pin ? '🔒' : ''}
+                            ${profile.is_kids_profile ? '👶' : ''}
+                        `;
+                        profilesDiv.appendChild(profileEl);
+                    });
+                    
+                    if (!data.can_add_profile) {
+                        log('Maximum number of profiles reached!', 'error');
+                    }
+                } else {
+                    log(`Failed to get profiles: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function createProfile() {
+            if (!authToken) {
+                log('Please login first', 'error');
+                return;
+            }
+
+            const name = document.getElementById('profileName').value;
+            const pin = document.getElementById('profilePin').value;
+            const isKidsProfile = document.getElementById('isKidsProfile').checked;
+
+            if (!name) {
+                log('Please enter a profile name', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/profiles`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name,
+                        parental_pin: pin || undefined,
+                        is_kids_profile: isKidsProfile
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    log(`Profile "${name}" created successfully!`, 'success');
+                    document.getElementById('profileName').value = '';
+                    document.getElementById('profilePin').value = '';
+                    document.getElementById('isKidsProfile').checked = false;
+                    getProfiles(); // Refresh profiles
+                } else {
+                    log(`Failed to create profile: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-login on page load for convenience
+        window.onload = () => {
+            log('Test page loaded. Click "Login" to start.');
+        };
+    </script>
+</body>
+</html>
