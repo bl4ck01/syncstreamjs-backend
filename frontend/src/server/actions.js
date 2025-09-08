@@ -160,6 +160,27 @@ export async function getCurrentProfile() {
     return data;
 }
 
+// Default playlist for current profile
+export async function getDefaultPlaylistId() {
+    const me = await getCurrentProfile();
+    if (!me?.success) return { success: false, message: me?.message || 'Unable to load profile' };
+    const id = me?.data?.default_playlist_id || null;
+    return { success: true, data: { default_playlist_id: id } };
+}
+
+export async function updateDefaultPlaylistId(playlistId) {
+    const me = await getCurrentProfile();
+    if (!me?.success) return { success: false, message: me?.message || 'Unable to load profile' };
+    const profileId = me?.data?.id;
+    if (!profileId) return { success: false, message: 'No profile' };
+    const upd = await performRequest(`/profiles/${profileId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ default_playlist_id: playlistId || null })
+    });
+    if (!upd?.success) return upd;
+    return { success: true, data: { default_playlist_id: playlistId || null } };
+}
+
 export async function selectProfile(profileId, pin = null) {
     const requestBody = {};
 
