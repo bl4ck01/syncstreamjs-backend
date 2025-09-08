@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.29.1-dev132.0",
     "@hookform/resolvers": "^5.2.1",
     "@number-flow/react": "^0.5.10",
     "@radix-ui/react-avatar": "^1.1.10",
@@ -22,10 +23,12 @@
     "@tsparticles/react": "^3.0.0",
     "@tsparticles/slim": "^3.9.1",
     "@types/canvas-confetti": "^1.9.0",
+    "apache-arrow": "^21.0.0",
     "canvas-confetti": "^1.9.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.12",
+    "localforage": "^1.10.0",
     "lucide-react": "^0.542.0",
     "motion": "^12.23.12",
     "next": "15.5.2",
