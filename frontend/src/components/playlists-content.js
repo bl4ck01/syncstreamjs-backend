@@ -73,7 +73,7 @@ function PlaylistsContentInner({
                 const playlistId = `${playlist.url}|${playlist.username}`;
                 return hasPlaylistData(playlistId);
             });
-            return hasAnyData;
+            return true;
         }
         
         // No server playlists, but store is hydrated - we can show interface

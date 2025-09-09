@@ -6,6 +6,13 @@ const nextConfig = {
 			...config.experiments,
 			asyncWebAssembly: true,
 		};
+		
+		// Handle WASM files as resources
+		config.module.rules.push({
+			test: /\.wasm$/,
+			type: 'asset/resource',
+		});
+		
 		return config;
 	},
 };
