@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { createPlaylistAction, updatePlaylistAction } from '@/server/playlist-actions';
 import { toast } from 'sonner';
+import { testXtreamConnection } from '@/lib/xtream';
 
 // Validation schema
 const playlistSchema = z.object({
@@ -124,6 +125,23 @@ export default function PlaylistDialog({
         
         startTransition(async () => {
             try {
+                // For new playlists, test connection first
+                if (!isEditing) {
+                    console.log('Testing IPTV connection before creating playlist...');
+                    const connectionTest = await testXtreamConnection({
+                        baseUrl: data.url,
+                        username: data.username,
+                        password: data.password
+                    });
+
+                    if (!connectionTest.success) {
+                        setError(connectionTest.message || 'Failed to connect to IPTV server. Please check your credentials.');
+                        return;
+                    }
+                    
+                    console.log('Connection test successful, proceeding with playlist creation');
+                }
+
                 const result = isEditing 
                     ? await updatePlaylistAction(playlist.id, data)
                     : await createPlaylistAction(data);

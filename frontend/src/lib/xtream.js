@@ -23,15 +23,15 @@ async function fetchJson(url, retries = 3, delay = 1000) {
                 
                 // Handle different HTTP errors
                 if (resp.status === 404) {
-                    throw new Error(`Endpoint not found (404). Check if the IPTV server URL and credentials are correct.`);
+                    throw new Error(`Error fetching data. Please check if the server URL and credentials are correct.`);
                 } else if (resp.status === 429) {
                     throw new Error(`Rate limited (429). Too many requests to the IPTV server.`);
                 } else if (resp.status === 403) {
-                    throw new Error(`Access forbidden (403). Check your IPTV credentials.`);
+                    throw new Error(`Access forbidden (403). Please check your credentials.`);
                 } else if (resp.status === 401) {
-                    throw new Error(`Unauthorized (401). Invalid IPTV credentials.`);
+                    throw new Error(`Unauthorized (401). Please check your credentials.`);
                 } else if (resp.status >= 500) {
-                    throw new Error(`Server error (${resp.status}). IPTV server is experiencing issues.`);
+                    throw new Error(`Server error (${resp.status}). The server is experiencing issues.`);
                 } else {
                     throw new Error(errorMsg);
                 }
@@ -63,6 +63,43 @@ async function fetchJson(url, retries = 3, delay = 1000) {
                 throw error;
             }
         }
+    }
+}
+
+// Test connection function - only fetches user info to validate credentials quickly
+export async function testXtreamConnection({ baseUrl, username, password }) {
+    const params = { username, password };
+    const apiPath = 'player_api.php';
+    
+    const userInfoUrl = buildUrl(baseUrl, apiPath, { ...params, action: 'get_user_info' });
+    
+    try {
+        console.log('Testing IPTV connection...');
+        const userInfo = await fetchJson(userInfoUrl, 1, 500); // Single retry, faster timeout
+        
+        // Check if the response contains valid user info
+        if (!userInfo || typeof userInfo !== 'object') {
+            throw new Error('Invalid response from IPTV server. Please check your credentials.');
+        }
+        
+        // Check for common error patterns in user info response
+        if (userInfo.message && userInfo.message.includes('INVALID')) {
+            throw new Error('Invalid IPTV credentials. Please check your username and password.');
+        }
+        
+        console.log('IPTV connection test successful');
+        return {
+            success: true,
+            userInfo,
+            message: 'Connection successful!'
+        };
+    } catch (error) {
+        console.log('IPTV connection test failed:', error.message);
+        return {
+            success: false,
+            message: error.message,
+            userInfo: null
+        };
     }
 }
 
