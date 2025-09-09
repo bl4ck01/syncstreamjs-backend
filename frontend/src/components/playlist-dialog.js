@@ -42,7 +42,7 @@ import {
 } from 'lucide-react';
 import { createPlaylistAction, updatePlaylistAction } from '@/server/playlist-actions';
 import { toast } from 'sonner';
-import { testXtreamConnection } from '@/lib/xtream';
+import { testConnection } from '@/lib/proxy';
 
 // Validation schema
 const playlistSchema = z.object({
@@ -119,23 +119,24 @@ export default function PlaylistDialog({
         }
     }, [open, playlist, form]);
 
+
     // Handle form submission
     const onSubmit = (data) => {
         setError('');
         
         startTransition(async () => {
             try {
-                // For new playlists, test connection first
+                // For new playlists, test connection first via proxy
                 if (!isEditing) {
-                    console.log('Testing IPTV connection before creating playlist...');
-                    const connectionTest = await testXtreamConnection({
+                    console.log('Testing IPTV connection via proxy before creating playlist...');
+                    const connectionTest = await testConnection({
                         baseUrl: data.url,
                         username: data.username,
                         password: data.password
                     });
 
                     if (!connectionTest.success) {
-                        setError(connectionTest.message || 'Failed to connect to IPTV server. Please check your credentials.');
+                        setError(connectionTest.message || 'Failed to connect to proxy. Please check your credentials.');
                         return;
                     }
                     

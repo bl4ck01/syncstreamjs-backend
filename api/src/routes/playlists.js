@@ -73,6 +73,8 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
 
     // Get single playlist
     .get('/:id', async ({ params, userId, db }) => {
+
+        console.log('[Playlists] Getting playlist:', params.id, "for user:", userId);
         const playlist = await db.getOne(
             'SELECT * FROM playlists WHERE id = $1 AND user_id = $2',
             [params.id, userId]

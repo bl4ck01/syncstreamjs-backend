@@ -121,6 +121,7 @@ export async function deletePlaylistAction(id) {
 // Get a single playlist
 export async function getPlaylistAction(id) {
     const data = await performRequest(`/playlists/${id}`);
+    console.log('[Playlist Actions] Playlist fetch result:', data);
     return data;
 }
 

@@ -1,11 +1,12 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
+import { Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { XCircle, ArrowLeft, CreditCard, Mail, RefreshCw } from 'lucide-react';
 
-export default function PaymentCancelPage() {
+function PaymentCancelContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const sessionId = searchParams.get('session_id');
@@ -138,5 +139,17 @@ export default function PaymentCancelPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function PaymentCancelPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-black flex items-center justify-center">
+                <div className="text-white">Loading...</div>
+            </div>
+        }>
+            <PaymentCancelContent />
+        </Suspense>
     );
 }

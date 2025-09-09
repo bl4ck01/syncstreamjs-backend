@@ -1,24 +1,53 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
-## Getting Started
+## Getting Started (Bun)
 
-First, run the development server:
+First, run the development servers with Bun:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+# Start the Go proxy (default :8081)
+# Windows PowerShell
+$env:PROXY_ADDR=":8081"; go run ./proxy
+# Linux/macOS
+# PROXY_ADDR=":8081" go run ./proxy
+
+# In another terminal, start the frontend
+cd frontend
+bun install
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+The browser calls the proxy directly using `NEXT_PUBLIC_PROXY_URL` (no Next.js rewrites).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Environment Variables
+
+Create `frontend/.env.local` to override defaults if needed:
+
+```
+# Public URL for the proxy used by the browser
+NEXT_PUBLIC_PROXY_URL=http://localhost:8081
+
+# Backend API base (used by server actions and middleware)
+NEXT_PUBLIC_BACKEND_URL=http://localhost:3000/api/v1
+```
+
+## Proxy Integration
+
+The frontend integrates with the Go proxy server which provides:
+
+- **GET /test** - Lightweight connection validation (used in playlist dialog)
+- **GET /get** - Full data fetch with all categories and streams (used by playlist store)
+- **GET /health** - Health check endpoint
+
+The frontend calls these endpoints directly from the browser using `NEXT_PUBLIC_PROXY_URL`.
+
+## Notes
+
+- All development tooling uses Bun. Prefer `bun install`, `bun dev`, etc.
+- Shared proxy utilities are in `src/lib/proxy.js` to avoid code duplication.
+- The `/test` endpoint is fast and used for credential validation without fetching all data.
 
 ## Learn More
 
