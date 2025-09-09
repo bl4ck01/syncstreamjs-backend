@@ -3,6 +3,7 @@ import { authPlugin } from '../plugins/auth.js';
 import { databasePlugin } from '../plugins/database.js';
 import { authMiddleware, userContextMiddleware, activeSubscriptionMiddleware } from '../middleware/auth.js';
 import { createPlaylistSchema, updatePlaylistSchema, idParamSchema } from '../utils/schemas.js';
+import env from '../utils/env.js';
 
 export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     .use(authPlugin)
@@ -16,10 +17,18 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
             [userId]
         );
 
+        // Check if user can add more playlists
+        const currentPlaylistCount = playlists.length;
+        const maxPlaylists = env.MAX_PLAYLISTS;
+        const canAddPlaylist = currentPlaylistCount < maxPlaylists;
+
         return {
             success: true,
             message: null,
-            data: playlists
+            data: playlists,
+            can_add_playlist: canAddPlaylist,
+            playlist_count: currentPlaylistCount,
+            max_playlists: maxPlaylists
         };
     })
 
@@ -27,7 +36,22 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
     .use(userContextMiddleware)
     .use(activeSubscriptionMiddleware)
     .post('/', async ({ body, userId, user, db }) => {
-        // No playlist limits - users can create unlimited playlists
+        // Check playlist limit
+        const currentPlaylists = await db.getMany(
+            'SELECT id FROM playlists WHERE user_id = $1',
+            [userId]
+        );
+
+        const currentPlaylistCount = currentPlaylists.length;
+        const maxPlaylists = env.MAX_PLAYLISTS;
+
+        if (currentPlaylistCount >= maxPlaylists) {
+            return {
+                success: false,
+                message: `You have reached the maximum limit of ${maxPlaylists} playlists. Please delete a playlist before creating a new one.`,
+                data: null
+            };
+        }
 
         // Create playlist (password encryption should be handled at a different layer)
         const playlist = await db.insert('playlists', {
@@ -103,8 +127,8 @@ export const playlistRoutes = new Elysia({ prefix: '/playlists' })
             throw new Error('Playlist not found');
         }
 
-        // Soft delete
-        await db.update('playlists', params.id, { is_active: false });
+        // Hard delete - actually remove the playlist from database
+        await db.delete('playlists', params.id);
 
         return {
             success: true,

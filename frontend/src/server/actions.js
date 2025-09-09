@@ -155,6 +155,23 @@ export async function getPlaylists() {
     return data;
 }
 
+export async function deletePlaylist(id) {
+    console.log('Deleting playlist with ID:', id);
+    const data = await performRequest(`/playlists/${id}`, {
+        method: 'DELETE'
+    });
+    console.log('Delete response:', data);
+    
+    // Invalidate the playlists page cache if deletion was successful
+    if (data?.success) {
+        const { revalidatePath } = await import('next/cache');
+        revalidatePath('/playlists');
+        console.log('Revalidated /playlists path');
+    }
+    
+    return data;
+}
+
 export async function getCurrentProfile() {
     const data = await performRequest('/profiles/current');
     return data;

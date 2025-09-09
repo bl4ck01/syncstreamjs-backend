@@ -5,223 +5,174 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import localforage from 'localforage';
 import { fetchXtreamAllData } from '@/lib/xtream';
 import * as duckdb from '@duckdb/duckdb-wasm';
-import * as arrow from 'apache-arrow';
-import { getDefaultPlaylistId, updateDefaultPlaylistId } from '@/server/actions';
 
-// Capture set function to use inside persist onRehydrateStorage callback
-let __setStateRef = null;
-
-// Persisted playlist store using localforage
+// Simplified playlist store using localforage
 export const usePlaylistStore = create(
     persist(
         (set, get) => ({
-            playlists: [], // Array of playlist metadata and fetched data
-            currentPlaylist: null,
-            isLoading: false,
+            // Core state - simplified using plain object instead of Map for better persistence
+            playlists: {}, // Record<playlistId, playlistData>
             isHydrated: false,
-            hydratedFromStorage: false,
+            isLoading: false,
             error: null,
 
-            // DuckDB instance and load tracking
-            db: null, // duckdb.AsyncDuckDB | null
-            conn: null, // connection
-            loadedContent: { live: false, vod: false, series: false },
-            defaultPlaylistId: null,
+            // DuckDB instance for data processing
+            db: null,
+            conn: null,
 
-            // Internal: initialize DuckDB WASM once in browser
+            // Initialize DuckDB once (disabled for now due to CORS issues with CDN)
             _ensureDb: async () => {
                 const state = get();
-                if (state.db && state.conn) return state;
-                try {
-                    const bundles = duckdb.getJsDelivrBundles();
-                    const bundle = await duckdb.selectBundle(bundles);
-                    const worker = new Worker(bundle.mainWorker);
-                    const logger = new duckdb.ConsoleLogger();
-                    const db = new duckdb.AsyncDuckDB(logger, worker);
-                    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-                    const conn = await db.connect();
-                    set({ db, conn });
-                    return { db, conn };
-                } catch (e) {
-                    set({ error: e?.message || 'Failed to initialize DuckDB' });
-                    throw e;
-                }
+                if (state.db && state.conn) return { db: state.db, conn: state.conn };
+
+                // TODO: Setup DuckDB with local workers instead of CDN
+                console.log('DuckDB initialization skipped - using in-memory data storage');
+                const mockDb = { initialized: true };
+                const mockConn = { connected: true };
+                set({ db: mockDb, conn: mockConn });
+                return { db: mockDb, conn: mockConn };
             },
 
-            setPlaylists: (playlists) => set({ playlists }),
-
-            addOrUpdatePlaylistConfig: (playlistConfig) => {
-                const playlistId = `${playlistConfig.baseUrl}|${playlistConfig.username}`;
-                const existing = get().playlists || [];
-                const next = [...existing.filter(p => p.id !== playlistId), {
-                    id: playlistId,
-                    meta: {
-                        name: playlistConfig.name || existing.find(p => p.id === playlistId)?.meta?.name || '',
-                        baseUrl: playlistConfig.baseUrl,
-                        username: playlistConfig.username,
-                        password: playlistConfig.password || existing.find(p => p.id === playlistId)?.meta?.password || '',
-                        lastUpdatedAt: existing.find(p => p.id === playlistId)?.meta?.lastUpdatedAt || 0,
-                    },
-                    data: existing.find(p => p.id === playlistId)?.data || null,
-                }];
-                set({ playlists: next });
-                return playlistId;
+            // Check if we have data for a playlist
+            hasPlaylistData: (playlistId) => {
+                const playlists = get().playlists || {};
+                return playlists[playlistId]?.data?.streams;
             },
 
-            deletePlaylist: (id) => {
-                const next = (get().playlists || []).filter(p => p.id !== id);
-                const wasCurrent = get().currentPlaylist?.id === id;
-                const nextState = { playlists: next };
-                if (wasCurrent) {
-                    nextState.currentPlaylist = null;
-                    nextState.loadedContent = { live: false, vod: false, series: false };
-                }
-                if (get().defaultPlaylistId === id) {
-                    nextState.defaultPlaylistId = null;
-                }
-                set(nextState);
+            // Get playlist data
+            getPlaylistData: (playlistId) => {
+                const playlists = get().playlists || {};
+                return playlists[playlistId] || null;
             },
 
-            // New API: addPlaylist (alias of addOrUpdatePlaylistConfig without id in arg)
-            addPlaylist: (playlist) => {
-                return get().addOrUpdatePlaylistConfig(playlist);
+            // Check if store is ready with data
+            isReady: () => {
+                const state = get();
+                // Just check if hydrated - don't require having playlists
+                return state.isHydrated;
             },
 
-            // Select a playlist by id and prepare DB
-            selectPlaylist: async (id) => {
-                const pl = (get().playlists || []).find(p => p.id === id) || null;
-                set({ currentPlaylist: pl });
-                await get()._ensureDb();
-            },
-
-            // Default playlist helpers (uses server actions)
-            fetchDefaultPlaylist: async () => {
-                const res = await getDefaultPlaylistId();
-                if (res?.success) set({ defaultPlaylistId: res?.data?.default_playlist_id || null });
-                return res;
-            },
-            setDefaultPlaylist: async (playlistId) => {
-                const res = await updateDefaultPlaylistId(playlistId || null);
-                if (res?.success) set({ defaultPlaylistId: res?.data?.default_playlist_id || null });
-                return res;
-            },
-
-            // Load playlists data via Xtream Codes for a given playlist config
+            // Load playlist data from Xtream API and store in DuckDB
             loadPlaylistData: async (playlistConfig) => {
-                if (!playlistConfig || !playlistConfig.baseUrl || !playlistConfig.username || !playlistConfig.password) {
-                    set({ error: 'Missing playlist configuration', isLoading: false });
+                if (!playlistConfig?.baseUrl || !playlistConfig?.username || !playlistConfig?.password) {
+                    set({ error: 'Missing playlist configuration' });
                     return { success: false, message: 'Missing playlist configuration' };
                 }
 
+                const playlistId = `${playlistConfig.baseUrl}|${playlistConfig.username}`;
+
                 try {
                     set({ isLoading: true, error: null });
+
+                    console.log(`Loading playlist data for: ${playlistConfig.name || playlistId}`);
+
+                    // Fetch data from Xtream API
                     const data = await fetchXtreamAllData(playlistConfig);
 
-                    // Merge or insert playlist by a deterministic id (baseUrl+username)
-                    const playlistId = `${playlistConfig.baseUrl}|${playlistConfig.username}`;
-
-                    const existing = get().playlists || [];
-                    const next = [...existing.filter(p => p.id !== playlistId), {
+                    // Store in plain object
+                    const playlists = { ...get().playlists };
+                    playlists[playlistId] = {
                         id: playlistId,
                         meta: {
-                            name: existing.find(p => p.id === playlistId)?.meta?.name || playlistConfig.name || '',
+                            name: playlistConfig.name || '',
                             baseUrl: playlistConfig.baseUrl,
                             username: playlistConfig.username,
-                            // Do not persist password in cleartext beyond what is needed for refresh
-                            // We include it to allow background refresh. In a production app, encrypt at rest.
-                            password: playlistConfig.password,
+                            password: playlistConfig.password, // Note: encrypt in production
                             lastUpdatedAt: Date.now(),
                         },
                         data,
-                    }];
+                    };
 
-                    set({ playlists: next, isLoading: false });
+                    // Initialize DuckDB and store data
+                    await get()._ensureDb();
+
+                    set({ playlists, isLoading: false });
+
+                    console.log(`Successfully loaded playlist data for: ${playlistConfig.name || playlistId}`);
+                    console.log(`- Live channels: ${data?.streams?.live?.length || 0}`);
+                    console.log(`- VOD content: ${data?.streams?.vod?.length || 0}`);
+                    console.log(`- Series: ${data?.streams?.series?.length || 0}`);
+
                     return { success: true, data };
                 } catch (e) {
-                    set({ error: e?.message || 'Failed to load playlist', isLoading: false });
-                    return { success: false, message: e?.message || 'Failed to load playlist' };
+                    console.error('Failed to load playlist:', e);
+
+                    // Provide more user-friendly error messages
+                    let userMessage = e?.message || 'Failed to load playlist';
+
+                    if (userMessage.includes('404')) {
+                        userMessage = 'IPTV server endpoint not found. Please check your server URL.';
+                    } else if (userMessage.includes('401') || userMessage.includes('403')) {
+                        userMessage = 'Invalid credentials. Please check your username and password.';
+                    } else if (userMessage.includes('429') || userMessage.includes('Rate limited')) {
+                        userMessage = 'Too many requests. Please wait a moment and try again.';
+                    } else if (userMessage.includes('Network error')) {
+                        userMessage = 'Cannot connect to IPTV server. Please check your internet connection.';
+                    } else if (userMessage.includes('Server error')) {
+                        userMessage = 'IPTV server is experiencing issues. Please try again later.';
+                    }
+
+                    set({ error: userMessage, isLoading: false });
+                    return { success: false, message: userMessage };
                 }
             },
 
-            // Process content: fetch for current playlist and load into DuckDB (WIP: placeholder loads)
-            processContent: async () => {
-                const { currentPlaylist } = get();
-                if (!currentPlaylist || !currentPlaylist.meta) return { success: false, message: 'No playlist selected' };
-                await get()._ensureDb();
-                // For now, rely on already-fetched data; later we can create DuckDB tables
-                set({ loadedContent: { live: true, vod: true, series: true } });
-                return { success: true };
-            },
-
-            // Refresh content from server for the current playlist
-            refreshContent: async () => {
-                const { currentPlaylist } = get();
-                if (!currentPlaylist || !currentPlaylist.meta) return { success: false, message: 'No playlist selected' };
-                const { baseUrl, username, password } = currentPlaylist.meta;
-                const res = await get().loadPlaylistData({ baseUrl, username, password });
-                if (res?.success) {
-                    // Bump currentPlaylist reference
-                    const updated = (get().playlists || []).find(p => p.id === currentPlaylist.id) || null;
-                    set({ currentPlaylist: updated });
+            // Refresh playlist data
+            refreshPlaylistData: async (playlistId) => {
+                const playlistData = get().getPlaylistData(playlistId);
+                if (!playlistData?.meta) {
+                    return { success: false, message: 'Playlist not found' };
                 }
-                return res;
+
+                return get().loadPlaylistData(playlistData.meta);
             },
 
-            // Simple JS-based search over current playlist data; can be replaced by DuckDB queries
-            searchContent: async (type, query) => {
-                const { currentPlaylist } = get();
-                if (!currentPlaylist?.data?.streams) return [];
-                const q = (query || '').toLowerCase();
-                const list = type === 'live' ? (currentPlaylist.data.streams.live || [])
-                    : type === 'vod' ? (currentPlaylist.data.streams.vod || [])
-                        : (currentPlaylist.data.streams.series || []);
-                return list.filter(item => {
-                    const name = String(item?.name || item?.title || '').toLowerCase();
-                    return name.includes(q);
+            // Remove playlist from store
+            removePlaylist: (playlistId) => {
+                const playlists = { ...get().playlists };
+                delete playlists[playlistId];
+                set({ playlists });
+            },
+
+            // Clean up orphaned playlists that don't exist on server
+            // TODO: is really needed?
+            cleanupOrphanedPlaylists: (validServerPlaylists) => {
+                const validIds = new Set(validServerPlaylists.map(p => `${p.url}|${p.username}`));
+                const currentPlaylists = get().playlists || {};
+                const playlists = { ...currentPlaylists };
+
+                let removed = 0;
+                Object.keys(playlists).forEach(id => {
+                    if (!validIds.has(id)) {
+                        delete playlists[id];
+                        removed++;
+                    }
                 });
-            },
 
-            // Simple JS-based filtering
-            filterContent: async (type, filters) => {
-                const { currentPlaylist } = get();
-                if (!currentPlaylist?.data?.streams) return [];
-                const list = type === 'live' ? (currentPlaylist.data.streams.live || [])
-                    : type === 'vod' ? (currentPlaylist.data.streams.vod || [])
-                        : (currentPlaylist.data.streams.series || []);
-                return list.filter(row => {
-                    return Object.entries(filters || {}).every(([k, v]) => {
-                        if (v == null || v === '') return true;
-                        const rv = row?.[k];
-                        if (typeof v === 'string') return String(rv || '').toLowerCase().includes(v.toLowerCase());
-                        if (Array.isArray(v)) return v.includes(rv);
-                        return rv === v;
-                    });
-                });
-            },
+                if (removed > 0) {
+                    console.log(`Cleaned up ${removed} orphaned playlists`);
+                    set({ playlists });
+                }
 
-            // Helper to find a playlist by id
-            getPlaylistById: (id) => {
-                return (get().playlists || []).find(p => p.id === id) || null;
+                return Object.keys(playlists).length;
             },
         }),
         {
             name: 'playlist-store',
             storage: createJSONStorage(() => localforage),
             onRehydrateStorage: () => (rehydratedState) => {
-                // This runs AFTER rehydration completes
-                const hadPlaylists = Array.isArray(rehydratedState?.playlists) && rehydratedState.playlists.length > 0;
-                if (__setStateRef) {
-                    __setStateRef({ isHydrated: true, hydratedFromStorage: hadPlaylists });
+                // Set hydrated flag when storage is loaded
+                if (rehydratedState) {
+                    rehydratedState.isHydrated = true;
+                    // Ensure playlists is an object
+                    if (!rehydratedState.playlists || typeof rehydratedState.playlists !== 'object') {
+                        rehydratedState.playlists = {};
+                    }
                 }
             }
         }
     )
 );
-
-// Initialize the set ref after store creation
-usePlaylistStore.subscribe(() => { });
-// Assign set reference safely
-try { __setStateRef = usePlaylistStore.setState; } catch { __setStateRef = null; }
 
 export default usePlaylistStore;
 

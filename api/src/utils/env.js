@@ -82,6 +82,9 @@ const envSchema = z.object({
 
     // Profile limits
     MAX_PROFILES: z.string().transform(Number).default('5'),
+
+    // Playlist limits
+    MAX_PLAYLISTS: z.string().transform(Number).default('3'),
 });
 
 // Validate and parse environment variables

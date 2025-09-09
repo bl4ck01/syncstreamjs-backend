@@ -113,5 +113,16 @@ export const databasePlugin = new Elysia({ name: 'database' })
             } catch (error) {
                 handleDatabaseError(error);
             }
+        },
+
+        // Delete record
+        delete: async (table, id) => {
+            try {
+                const query = `DELETE FROM ${table} WHERE id = $1 RETURNING *`;
+                const result = await pool.query(query, [id]);
+                return result.rows[0] || null;
+            } catch (error) {
+                handleDatabaseError(error);
+            }
         }
     });

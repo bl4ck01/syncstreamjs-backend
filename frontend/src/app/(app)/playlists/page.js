@@ -1,7 +1,6 @@
 import { Suspense } from 'react';
-import { getPlaylistsAction, getCurrentProfileWithPlaylist } from '@/server/playlist-actions';
-import PlaylistsContent from './playlists-content';
-import PlaylistsSkeleton from './playlists-skeleton';
+import { getPlaylists, getCurrentProfile } from '@/server/actions';
+import PlaylistsContent from '@/components/playlists-content';
 
 export const metadata = {
     title: 'Playlists - SyncStream',
@@ -11,33 +10,24 @@ export const metadata = {
 export default async function PlaylistsPage() {
     // Fetch data in parallel
     const [playlistsResponse, profileResponse] = await Promise.all([
-        getPlaylistsAction(),
-        getCurrentProfileWithPlaylist()
+        getPlaylists(),
+        getCurrentProfile()
     ]);
 
     // Extract data
     const playlists = playlistsResponse?.success ? playlistsResponse.data : [];
     const profile = profileResponse?.success ? profileResponse.data : null;
     const defaultPlaylistId = profile?.default_playlist_id || null;
+    const canAddPlaylist = playlistsResponse?.can_add_playlist ?? true;
 
     return (
-        <div className="container mx-auto p-6 space-y-6">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold text-white mb-2">Playlists</h1>
-                    <p className="text-neutral-400">
-                        Manage your IPTV playlists and streaming sources
-                    </p>
-                </div>
-            </div>
-
-            <Suspense fallback={<PlaylistsSkeleton />}>
-                <PlaylistsContent 
-                    initialPlaylists={playlists}
-                    defaultPlaylistId={defaultPlaylistId}
-                    profile={profile}
-                />
-            </Suspense>
-        </div>
+        <Suspense fallback={<div className="min-h-screen bg-black" />}>
+            <PlaylistsContent 
+                initialPlaylists={playlists}
+                defaultPlaylistId={defaultPlaylistId}
+                profile={profile}
+                canAddPlaylist={canAddPlaylist}
+            />
+        </Suspense>
     );
 }
