@@ -3,6 +3,8 @@ node_modules/
 .pnp
 .pnp.js
 
+proxy/dist/
+proxy/proxy.exe
 # Environment variables
 .env
 .env.local
