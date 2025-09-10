@@ -286,16 +286,16 @@ const NetflixRow = React.memo(({
             );
           }
 
-          // v2 Grid cell renderer
-          const Cell = ({ columnIndex, style, cellProps }) => {
-            const item = cellProps.loadedItems[columnIndex];
+          // v2 Grid cell renderer (cellProps are spread into top-level props)
+          const Cell = ({ columnIndex, style, loadedItems, activeTab }) => {
+            const item = loadedItems[columnIndex];
             if (!item) return null;
             
             return (
               <div style={style} className="flex-shrink-0">
                 <ContentCard 
                   item={item} 
-                  type={cellProps.activeTab}
+                  type={activeTab}
                   priority={columnIndex < 6}
                 />
               </div>
@@ -312,7 +312,6 @@ const NetflixRow = React.memo(({
               rowCount={1}
               rowHeight={itemHeight}
               width={width}
-              style={{ overflow: 'hidden' }}
             />
           );
         })()}
