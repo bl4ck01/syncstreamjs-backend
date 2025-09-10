@@ -251,7 +251,7 @@ export default function MoviesPage() {
 
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
-      <div className="h-screen bg-black overflow-hidden">
+      <div className="h-screen bg-black overflow-x-hidden overflow-y-auto">
         {/* Netflix Header */}
         <NetflixHeader
           profile={{ name: 'User', email: 'user@example.com' }}

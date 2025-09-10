@@ -249,8 +249,8 @@ export default function SeriesPage() {
 
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
-      <div className="min-h-screen bg-black">
-        {/* Netflix Header */}
+      <div className="h-screen bg-black overflow-x-hidden overflow-y-auto">
+      {/* Netflix Header */}
         <NetflixHeader 
           profile={{ name: 'User', email: 'user@example.com' }}
           onSearch={() => {}}
