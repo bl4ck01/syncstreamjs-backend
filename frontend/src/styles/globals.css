@@ -198,3 +198,76 @@
     display: none;
   }
 }
+
+/* Netflix-style animations */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Netflix-style hover effects */
+.netflix-card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.netflix-card-hover:hover {
+  transform: scale(1.05);
+  z-index: 50;
+}
+
+.netflix-card-hover:hover .netflix-overlay {
+  opacity: 1;
+}
+
+/* Smooth scrolling for Netflix rows */
+.netflix-row-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Netflix-style button animations */
+.netflix-button {
+  transition: all 0.2s ease;
+}
+
+.netflix-button:hover {
+  transform: scale(1.05);
+}
+
+.netflix-button:active {
+  transform: scale(0.98);
+}
+
+/* Netflix-style gradients */
+.netflix-gradient-overlay {
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.4) 50%,
+    rgba(0, 0, 0, 0.8) 100%
+  );
+}
+
+.netflix-hero-gradient {
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.8) 0%,
+    rgba(0, 0, 0, 0.4) 50%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}

@@ -1,6 +1,6 @@
 import { getCurrentProfile } from '@/server/actions';
 import { redirect } from 'next/navigation';
-import HomePage from '@/components/home-page-optimized';
+import NetflixHomePage from '@/components/netflix-home-page';
 
 export default async function Home() {
   const currentProfile = await getCurrentProfile();
@@ -9,5 +9,5 @@ export default async function Home() {
     redirect('/profiles');
   }
 
-  return <HomePage profile={currentProfile.data} />;
+  return <NetflixHomePage profile={currentProfile.data} />;
 }
