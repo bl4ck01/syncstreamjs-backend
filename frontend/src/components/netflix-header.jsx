@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Bell, ChevronDown, User, Settings, HelpCircle, LogOut } from 'lucide-react';
+import { useRouter, usePathname } from 'next/navigation';
+import { Search, Bell, ChevronDown, User, Settings, HelpCircle, LogOut, Home, Tv, Film, MonitorSpeaker } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -12,6 +13,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 export default function NetflixHeader({ profile, onSearch }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
@@ -23,21 +26,104 @@ export default function NetflixHeader({ profile, onSearch }) {
     }
   };
 
+  const navigateTo = (path) => {
+    router.push(path);
+  };
+
+  const isActive = (path) => {
+    return pathname === path;
+  };
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black/90 via-black/60 to-transparent">
       <div className="flex items-center justify-between px-4 sm:px-8 py-4">
         {/* Logo */}
         <div className="flex items-center">
-          <h1 className="text-2xl sm:text-3xl font-bold text-red-600">SYNCSTREAM</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-red-600 cursor-pointer" onClick={() => navigateTo('/')}>
+            SYNCSTREAM
+          </h1>
         </div>
 
         {/* Navigation */}
         <nav className="hidden md:flex items-center space-x-6">
-          <a href="#" className="text-white hover:text-gray-300 transition-colors font-medium">Home</a>
-          <a href="#" className="text-gray-400 hover:text-white transition-colors font-medium">TV Shows</a>
-          <a href="#" className="text-gray-400 hover:text-white transition-colors font-medium">Movies</a>
-          <a href="#" className="text-gray-400 hover:text-white transition-colors font-medium">New & Popular</a>
-          <a href="#" className="text-gray-400 hover:text-white transition-colors font-medium">My List</a>
+          <button
+            onClick={() => navigateTo('/')}
+            className={`flex items-center gap-2 transition-colors font-medium ${
+              isActive('/') 
+                ? 'text-white' 
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Home className="w-4 h-4" />
+            Home
+          </button>
+          <button
+            onClick={() => navigateTo('/live')}
+            className={`flex items-center gap-2 transition-colors font-medium ${
+              isActive('/live') 
+                ? 'text-white' 
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Tv className="w-4 h-4" />
+            Live TV
+          </button>
+          <button
+            onClick={() => navigateTo('/movies')}
+            className={`flex items-center gap-2 transition-colors font-medium ${
+              isActive('/movies') 
+                ? 'text-white' 
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Film className="w-4 h-4" />
+            Movies
+          </button>
+          <button
+            onClick={() => navigateTo('/series')}
+            className={`flex items-center gap-2 transition-colors font-medium ${
+              isActive('/series') 
+                ? 'text-white' 
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <MonitorSpeaker className="w-4 h-4" />
+            Series
+          </button>
+        </nav>
+
+        {/* Mobile Navigation */}
+        <nav className="md:hidden flex items-center space-x-4">
+          <button
+            onClick={() => navigateTo('/live')}
+            className={`p-2 rounded transition-colors ${
+              isActive('/live') 
+                ? 'bg-red-600 text-white' 
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Tv className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => navigateTo('/movies')}
+            className={`p-2 rounded transition-colors ${
+              isActive('/movies') 
+                ? 'bg-red-600 text-white' 
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <Film className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => navigateTo('/series')}
+            className={`p-2 rounded transition-colors ${
+              isActive('/series') 
+                ? 'bg-red-600 text-white' 
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            <MonitorSpeaker className="w-5 h-5" />
+          </button>
         </nav>
 
         {/* Search and User Actions */}
@@ -95,7 +181,7 @@ export default function NetflixHeader({ profile, onSearch }) {
               <DropdownMenuSeparator className="bg-gray-800" />
               <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer text-red-500">
                 <LogOut className="w-4 h-4 mr-2" />
-                Sign out of Netflix
+                Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

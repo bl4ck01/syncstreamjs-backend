@@ -28,7 +28,7 @@ export const useSimplePlaylistStore = create(
     // Selectors
     hasPlaylistData: (playlistId) => {
       const playlist = get().playlists[playlistId];
-      return !!(
+      const hasData = !!(
         playlist?.categorizedStreams?.live?.length || 
         playlist?.categorizedStreams?.vod?.length || 
         playlist?.categorizedStreams?.series?.length ||
@@ -36,15 +36,55 @@ export const useSimplePlaylistStore = create(
         playlist?.streams?.vod || 
         playlist?.streams?.series
       );
+      
+      console.log('[SimplePlaylistStore] 🔍 hasPlaylistData:', {
+        playlistId,
+        hasData,
+        hasCategorizedStreams: !!playlist?.categorizedStreams,
+        hasStreams: !!playlist?.streams,
+        liveCount: playlist?.categorizedStreams?.live?.length || 0,
+        vodCount: playlist?.categorizedStreams?.vod?.length || 0,
+        seriesCount: playlist?.categorizedStreams?.series?.length || 0
+      });
+      
+      return hasData;
     },
 
     getPlaylistData: (playlistId) => {
       return get().playlists[playlistId] || null;
     },
 
+    currentPlaylist: () => {
+      const state = get();
+      const defaultPlaylistId = state.defaultPlaylistId;
+      if (!defaultPlaylistId) return null;
+      
+      // Find the playlist in the playlists object
+      const playlist = Object.values(state.playlists).find(p => {
+        if (!p._meta) return false;
+        const playlistId = `${p._meta.baseUrl}|${p._meta.username}`;
+        return playlistId === defaultPlaylistId;
+      });
+      
+      console.log('[SimplePlaylistStore] 🎯 currentPlaylist selector:', {
+        defaultPlaylistId,
+        hasPlaylist: !!playlist,
+        playlistName: playlist?._meta?.name,
+        playlistId: playlist ? `${playlist._meta.baseUrl}|${playlist._meta.username}` : null
+      });
+      
+      return playlist;
+    },
+
     getCategorizedStreams: (playlistId, type = 'live') => {
+      console.log(`[SimplePlaylistStore] 📂 Getting categorized streams for playlist "${playlistId}", type "${type}"`);
+      
       const playlist = get().playlists[playlistId];
-      if (!playlist) return [];
+      if (!playlist) {
+        console.log(`[SimplePlaylistStore] ❌ No playlist found for ID: ${playlistId}`);
+        console.log(`[SimplePlaylistStore] 📋 Available playlist IDs:`, Object.keys(get().playlists));
+        return [];
+      }
 
       console.log('[SimplePlaylistStore] 📂 Getting categorized streams:', {
         playlistId,
@@ -52,11 +92,15 @@ export const useSimplePlaylistStore = create(
         hasCategorizedStreams: !!playlist.categorizedStreams,
         categorizedStreamsKeys: playlist.categorizedStreams ? Object.keys(playlist.categorizedStreams) : [],
         hasStreams: !!playlist.streams,
-        hasCategories: !!playlist.categories
+        hasCategories: !!playlist.categories,
+        playlistName: playlist._meta?.name || 'Unknown',
+        playlistType: playlist.type,
+        totalStreams: playlist.streams ? Object.values(playlist.streams).reduce((sum, arr) => sum + arr.length, 0) : 0
       });
 
       // Use new categorized structure if available
       if (playlist.categorizedStreams) {
+        console.log('[SimplePlaylistStore] 🆕 Using new categorized streams structure');
         let result;
         switch (type) {
           case 'live': 
@@ -76,7 +120,10 @@ export const useSimplePlaylistStore = create(
         console.log('[SimplePlaylistStore] 📋 Found categorized streams:', {
           type,
           resultLength: result.length,
-          firstResult: result[0]
+          resultIsArray: Array.isArray(result),
+          firstResult: result[0],
+          hasValidCategories: result.length > 0 && result[0]?.streams,
+          totalStreamsInResult: result.reduce((sum, cat) => sum + (cat.streams?.length || 0), 0)
         });
         
         return result;
@@ -84,13 +131,16 @@ export const useSimplePlaylistStore = create(
 
       // Fallback to old structure
       if (playlist.streams && playlist.categories) {
+        console.log('[SimplePlaylistStore] 🔄 Using fallback structure');
         const streams = playlist.streams[type === 'movies' ? 'vod' : type] || [];
         const categories = playlist.categories[type === 'movies' ? 'vod' : type] || [];
         
         console.log('[SimplePlaylistStore] 🔄 Using fallback structure:', {
           type,
           streamsCount: streams.length,
-          categoriesCount: categories.length
+          categoriesCount: categories.length,
+          firstStream: streams[0],
+          firstCategory: categories[0]
         });
         
         // Group streams by category
@@ -122,9 +172,16 @@ export const useSimplePlaylistStore = create(
           }
         });
 
-        return Object.values(categoryMap).filter(cat => cat.streamCount > 0);
+        const finalResult = Object.values(categoryMap).filter(cat => cat.streamCount > 0);
+        console.log('[SimplePlaylistStore] 📊 Fallback result:', {
+          totalCategories: finalResult.length,
+          totalStreams: finalResult.reduce((sum, cat) => sum + cat.streamCount, 0)
+        });
+
+        return finalResult;
       }
 
+      console.log('[SimplePlaylistStore] ❌ No data structure available');
       return [];
     },
 

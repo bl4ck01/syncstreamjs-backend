@@ -193,7 +193,7 @@ const NetflixRow = React.memo(({
           {/* Loaded items */}
           {loadedItems.map((item, index) => (
             <NetflixContentCard
-              key={`${item.stream_id || item.num}-${index}`}
+              key={`${item.stream_id || item.num || item.id || item.name}-${index}`}
               item={item}
               type={activeTab}
               priority={index < 6}
