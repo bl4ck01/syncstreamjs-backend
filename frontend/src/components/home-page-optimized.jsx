@@ -9,7 +9,7 @@ import PlaylistLoading from './playlist-loading';
 
 // Lazy load heavy components
 const VirtualizedCategoryList = dynamic(
-  () => import('@/components/virtualized-category-row').then((mod) => ({
+  () => import('@/components/netflix-style-rows').then((mod) => ({
     default: mod.VirtualizedCategoryList
   })),
   {
@@ -346,7 +346,11 @@ export default function HomePage() {
         });
         
         const categoryName = category.categoryName || category.category_name || category.name || 'Unknown Category';
-        const streams = Array.isArray(category.streams) ? category.streams : [];
+        // Determine the actual list of streams for this category.
+        // Some playlist structures use `items` instead of `streams`, so we need to handle both.
+        const streams = Array.isArray(category.streams)
+          ? category.streams
+          : (Array.isArray(category.items) ? category.items : []);
         const categoryId = category.categoryId || category.category_id || `category-${categoryName.replace(/[^a-zA-Z0-9]/g, '-')}-${index}`;
         
         console.log('[HomePage] 📋 Creating category object:', {
@@ -497,6 +501,8 @@ export default function HomePage() {
             <ErrorFallback error={{ message: error }} resetErrorBoundary={handleRetry} />
           ) : !currentPlaylist ? (
             <PlaylistLoading message="Loading content..." showAnalytics={true} />
+          ) : isTabSwitching ? (
+            <PlaylistLoading message="Switching categories..." showAnalytics={false} />
           ) : (
             <Suspense fallback={<PlaylistLoading message="Loading content..." />}>
               <VirtualizedCategoryList

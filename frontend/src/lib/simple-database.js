@@ -191,6 +191,61 @@ class SimpleDatabaseManager {
     }
   }
 
+  // Get category streams with pagination support
+  async getCategoryStreams(playlistId, categoryId, type, limit = 50, offset = 0) {
+    console.log(`[SimpleDatabaseManager] 📂 Getting category streams:`, {
+      playlistId,
+      categoryId,
+      type,
+      limit,
+      offset
+    });
+    
+    try {
+      const store = localforage.createInstance({ name: 'playlist-store' });
+      const playlistData = await store.getItem(playlistId);
+      
+      if (!playlistData?.categorizedStreams) {
+        console.log(`[SimpleDatabaseManager] ⚠️ No categorized streams found for playlist: ${playlistId}`);
+        return { streams: [], total: 0 };
+      }
+      
+      const categoryData = playlistData.categorizedStreams[type] || [];
+      const targetCategory = categoryData.find(cat => 
+        cat.categoryId === categoryId || 
+        cat.category_id === categoryId || 
+        cat.categoryName === categoryId || 
+        cat.category_name === categoryId ||
+        cat.name === categoryId
+      );
+      
+      if (!targetCategory) {
+        console.log(`[SimpleDatabaseManager] ⚠️ Category not found: ${categoryId}`);
+        return { streams: [], total: 0 };
+      }
+      
+      const allStreams = targetCategory.streams || [];
+      const total = allStreams.length;
+      const streams = allStreams.slice(offset, offset + limit);
+      
+      console.log(`[SimpleDatabaseManager] ✅ Retrieved category streams:`, {
+        categoryId,
+        categoryName: targetCategory.categoryName || targetCategory.category_name || targetCategory.name,
+        type,
+        total,
+        limit,
+        offset,
+        returned: streams.length,
+        hasMore: offset + limit < total
+      });
+      
+      return { streams, total };
+    } catch (error) {
+      console.error('[SimpleDatabaseManager] ❌ Failed to get category streams:', error);
+      return { streams: [], total: 0 };
+    }
+  }
+
   // Utility methods
   async clearAllData() {
     try {
@@ -242,5 +297,6 @@ export const loadPlaylist = (id) => simpleDbManager.loadPlaylist(id);
 export const getAllPlaylists = () => simpleDbManager.getAllPlaylists();
 export const deletePlaylist = (id) => simpleDbManager.deletePlaylist(id);
 export const searchStreams = (query, filters) => simpleDbManager.searchStreams(query, filters);
+export const getCategoryStreams = (playlistId, categoryId, type, limit, offset) => simpleDbManager.getCategoryStreams(playlistId, categoryId, type, limit, offset);
 export const clearAllData = () => simpleDbManager.clearAllData();
 export const getStorageInfo = () => simpleDbManager.getStorageInfo();
