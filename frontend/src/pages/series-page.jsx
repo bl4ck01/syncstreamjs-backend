@@ -71,7 +71,6 @@ export default function SeriesPage() {
   });
 
   const [currentPlaylist, setCurrentPlaylist] = useState(null);
-  const [currentCounts, setCurrentCounts] = useState(null);
   const [noPlaylistMessage, setNoPlaylistMessage] = useState(null);
   const [hasTriedLoading, setHasTriedLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -137,10 +136,7 @@ export default function SeriesPage() {
           const playlist = result.data;
           console.log('[SeriesPage] ✅ Setting loaded playlist:', playlist._meta?.name || 'Unknown');
           
-          const playlistStoreId = `${playlist._meta?.baseUrl}|${playlist._meta?.username}`;
-          
           setCurrentPlaylist(playlist);
-          setCurrentCounts(getPlaylistCounts(playlistStoreId));
         } else if (result.noPlaylist) {
           console.log('[SeriesPage] ⚠️ No playlist message:', result.message);
           setNoPlaylistMessage(result.message);
@@ -152,7 +148,6 @@ export default function SeriesPage() {
             if (cachedPlaylist) {
               console.log('[SeriesPage] ✅ Using cached playlist');
               setCurrentPlaylist(cachedPlaylist);
-              setCurrentCounts(getPlaylistCounts(defaultPlaylistId));
             }
           }
         }
@@ -162,14 +157,7 @@ export default function SeriesPage() {
     }
   }, [isInitialized, currentPlaylist, hasTriedLoading, globalLoading, loadDefaultPlaylist, getPlaylistCounts]);
 
-  // Handle search
-  const handleSearch = async (query) => {
-    if (query.trim().length >= 2) {
-      // For series page, search within series
-      console.log('[SeriesPage] 🔍 Searching series:', query);
-    }
-  };
-
+  
   // Process data for display - Netflix style horizontal rows
   const categorizedData = useMemo(() => {
     console.log('[SeriesPage] 🔄 useMemo recalculating categorizedData:', {
@@ -249,7 +237,6 @@ export default function SeriesPage() {
   const handleRetry = () => {
     clearError();
     setCurrentPlaylist(null);
-    setCurrentCounts(null);
     setNoPlaylistMessage(null);
     setHasTriedLoading(false);
     setSearchQuery('');
@@ -266,7 +253,7 @@ export default function SeriesPage() {
         {/* Netflix Header */}
         <NetflixHeader 
           profile={{ name: 'User', email: 'user@example.com' }}
-          onSearch={handleSearch}
+          onSearch={() => {}}
         />
 
         {/* Hero Section */}
@@ -276,21 +263,9 @@ export default function SeriesPage() {
           )}
         </div>
 
-        {/* Series Indicator */}
-        <div className="sticky top-16 z-40 bg-black/95 backdrop-blur-sm border-b border-gray-800">
-          <div className="flex items-center px-4 sm:px-8 py-4">
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse"></div>
-              <span className="text-purple-500 font-medium text-sm">SERIES</span>
-              <span className="text-gray-400 text-sm">
-                {currentCounts?.totalSeries?.toLocaleString() || '0'} SERIES
-              </span>
-            </div>
-          </div>
-        </div>
-
+    
         {/* Content Area */}
-        <div className="relative -mt-32 z-10 pb-20">
+        <div className="relative z-10 pb-20">
           {noPlaylistMessage && !currentPlaylist ? (
             <div className="h-full flex items-center justify-center bg-black text-white p-6">
               <div className="text-center max-w-md">

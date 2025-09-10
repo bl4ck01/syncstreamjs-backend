@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Play, Info, Volume2, VolumeX, ThumbsUp, ThumbsDown, Plus } from 'lucide-react';
+import { Play, Info, Volume2, VolumeX, ThumbsUp, Plus } from 'lucide-react';
 
 export default function NetflixHero({ featuredContent }) {
   const [isMuted, setIsMuted] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
   // If no featured content, use a fallback
@@ -53,7 +52,7 @@ export default function NetflixHero({ featuredContent }) {
   };
 
   return (
-    <div className="relative h-[70vh] min-h-[500px] bg-black overflow-hidden">
+    <div className="relative h-[70vh] min-h-[500px] bg-black overflow-hidden z-0">
       {/* Background Image/Video */}
       <div className="absolute inset-0">
         {currentContent.stream_icon ? (
@@ -75,7 +74,7 @@ export default function NetflixHero({ featuredContent }) {
       </div>
 
       {/* Content Overlay */}
-      <div className="absolute bottom-0 left-0 right-0 p-6 md:p-12 lg:p-16">
+      <div className="absolute bottom-0 left-0 right-0 p-6 md:p-12 lg:p-16 z-10">
         <div className="max-w-4xl">
           {/* Type Badge */}
           <div className="mb-4">

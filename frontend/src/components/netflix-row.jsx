@@ -18,9 +18,10 @@ const NetflixRow = React.memo(({
   const [loadedItems, setLoadedItems] = useState([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasLoadedAll, setHasLoadedAll] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
 
-  const CHUNK_SIZE = performanceMode ? 20 : 30;
-  const MAX_VISIBLE_ITEMS = performanceMode ? 100 : 200;
+  const CHUNK_SIZE = performanceMode ? 15 : 25;
+  const MAX_VISIBLE_ITEMS = performanceMode ? 80 : 150;
 
   // Check scroll capabilities
   const checkScroll = useCallback(() => {
@@ -36,6 +37,9 @@ const NetflixRow = React.memo(({
     const container = scrollContainerRef.current;
     if (!container) return;
 
+    let touchStartX = 0;
+    let touchStartY = 0;
+
     const handleScroll = () => {
       checkScroll();
       
@@ -48,7 +52,80 @@ const NetflixRow = React.memo(({
       }
     };
 
+    const handleWheel = (e) => {
+      // If it's primarily a vertical scroll, let it bubble up
+      const isVerticalScroll = Math.abs(e.deltaY) > Math.abs(e.deltaX);
+      
+      if (isVerticalScroll) {
+        return; // Allow vertical scrolling to propagate
+      }
+      
+      // Only prevent default for horizontal scrolls
+      e.preventDefault();
+      e.stopPropagation();
+      
+      container.scrollLeft += e.deltaX;
+      checkScroll();
+      
+      // Load more items when scrolling near the end
+      const { scrollLeft, scrollWidth, clientWidth } = container;
+      const scrollPercentage = (scrollLeft + clientWidth) / scrollWidth;
+      
+      if (scrollPercentage > 0.7 && !isLoadingMore && !hasLoadedAll) {
+        loadMoreItems();
+      }
+    };
+
+    const handleTouchStart = (e) => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    };
+
+    const handleTouchMove = (e) => {
+      if (!touchStartX || !touchStartY) return;
+      
+      const touchEndX = e.touches[0].clientX;
+      const touchEndY = e.touches[0].clientY;
+      
+      const deltaX = touchEndX - touchStartX;
+      const deltaY = touchEndY - touchStartY;
+      
+      // If it's primarily a vertical swipe, let it bubble up
+      if (Math.abs(deltaY) > Math.abs(deltaX)) {
+        return;
+      }
+      
+      // Prevent default for horizontal swipes
+      e.preventDefault();
+      
+      // Handle horizontal scroll
+      container.scrollLeft -= deltaX;
+      checkScroll();
+      
+      // Load more items when scrolling near the end
+      const { scrollLeft, scrollWidth, clientWidth } = container;
+      const scrollPercentage = (scrollLeft + clientWidth) / scrollWidth;
+      
+      if (scrollPercentage > 0.7 && !isLoadingMore && !hasLoadedAll) {
+        loadMoreItems();
+      }
+      
+      // Update touch start position
+      touchStartX = touchEndX;
+      touchStartY = touchEndY;
+    };
+
+    const handleTouchEnd = () => {
+      touchStartX = 0;
+      touchStartY = 0;
+    };
+
     container.addEventListener('scroll', handleScroll);
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+    
     checkScroll();
 
     // Check scroll on resize
@@ -57,6 +134,10 @@ const NetflixRow = React.memo(({
 
     return () => {
       container.removeEventListener('scroll', handleScroll);
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
       resizeObserver.disconnect();
     };
   }, [checkScroll, isLoadingMore, hasLoadedAll]);
@@ -77,14 +158,38 @@ const NetflixRow = React.memo(({
     setTimeout(() => setIsScrolling(false), 300);
   }, []);
 
-  // Initialize with first chunk
+  // Intersection Observer for lazy loading
   useEffect(() => {
-    if (category?.items && Array.isArray(category.items) && category.items.length > 0 && loadedItems.length === 0) {
+    const rowElement = scrollContainerRef.current?.parentElement;
+    if (!rowElement) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      {
+        root: null,
+        rootMargin: '100px',
+        threshold: 0.1
+      }
+    );
+
+    observer.observe(rowElement);
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Initialize with first chunk when visible
+  useEffect(() => {
+    if (isVisible && category?.items && Array.isArray(category.items) && category.items.length > 0 && loadedItems.length === 0) {
       const firstChunk = category.items.slice(0, CHUNK_SIZE);
       setLoadedItems(firstChunk);
       setHasLoadedAll(category.items.length <= CHUNK_SIZE);
     }
-  }, [category?.items, loadedItems.length, CHUNK_SIZE]);
+  }, [isVisible, category?.items, loadedItems.length, CHUNK_SIZE]);
 
   // Load more items
   const loadMoreItems = useCallback(() => {
@@ -181,8 +286,17 @@ const NetflixRow = React.memo(({
             WebkitScrollbarDisplay: 'none'
           }}
         >
+          {/* Skeleton loading for lazy load */}
+          {!isVisible && (
+            <>
+              {Array.from({ length: 6 }).map((_, index) => (
+                <NetflixContentCardSkeleton key={`lazy-skeleton-${index}`} />
+              ))}
+            </>
+          )}
+          
           {/* Skeleton loading for initial load */}
-          {loadedItems.length === 0 && (
+          {isVisible && loadedItems.length === 0 && (
             <>
               {Array.from({ length: 6 }).map((_, index) => (
                 <NetflixContentCardSkeleton key={`skeleton-${index}`} />

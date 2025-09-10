@@ -6,6 +6,8 @@ class SimpleDatabaseManager {
     this.initialized = false;
     this.initializing = false;
     this.initPromise = null;
+    this.cache = new Map();
+    this.cacheTimeout = 2 * 60 * 1000; // 2 minutes
   }
 
   async initialize() {
@@ -89,6 +91,9 @@ class SimpleDatabaseManager {
 
       await store.setItem(playlistId, enrichedData);
       
+      // Update cache
+      this._setCache(playlistId, enrichedData);
+      
       console.log(`[SimpleDatabaseManager] ✅ Saved playlist: ${playlistId}`);
       return true;
     } catch (error) {
@@ -101,11 +106,20 @@ class SimpleDatabaseManager {
     try {
       console.log(`[SimpleDatabaseManager] 📂 Loading playlist: ${playlistId}`);
       
+      // Check cache first
+      const cached = this._getFromCache(playlistId);
+      if (cached) {
+        console.log(`[SimpleDatabaseManager] 🎯 Cache hit for playlist: ${playlistId}`);
+        return cached;
+      }
+      
       const store = localforage.createInstance({ name: 'playlist-store' });
       const data = await store.getItem(playlistId);
       
       if (data) {
         console.log(`[SimpleDatabaseManager] ✅ Loaded playlist: ${playlistId}`);
+        // Cache the result
+        this._setCache(playlistId, data);
       } else {
         console.log(`[SimpleDatabaseManager] ⚠️ No playlist found: ${playlistId}`);
       }
@@ -121,10 +135,18 @@ class SimpleDatabaseManager {
     try {
       console.log('[SimpleDatabaseManager] 📋 Loading all playlists...');
       
+      // Check cache first
+      const cacheKey = 'all_playlists';
+      const cached = this._getFromCache(cacheKey);
+      if (cached) {
+        console.log('[SimpleDatabaseManager] 🎯 Cache hit for all playlists');
+        return cached;
+      }
+      
       const store = localforage.createInstance({ name: 'playlist-store' });
       const playlists = [];
       
-  await store.iterate((value, key) => {
+      await store.iterate((value, key) => {
         // Skip internal keys and ensure valid data
         if (key !== 'playlist-store' && key !== '_test' && value && typeof value === 'object') {
           playlists.push({ id: key, ...value });
@@ -132,6 +154,10 @@ class SimpleDatabaseManager {
       });
 
       console.log(`[SimpleDatabaseManager] 📋 Loaded ${playlists.length} playlists`);
+      
+      // Cache the result
+      this._setCache(cacheKey, playlists);
+      
       return playlists;
     } catch (error) {
       console.error('[SimpleDatabaseManager] ❌ Failed to load playlists:', error);
@@ -145,6 +171,10 @@ class SimpleDatabaseManager {
       
       const store = localforage.createInstance({ name: 'playlist-store' });
       await store.removeItem(playlistId);
+
+      // Clear cache
+      this.cache.delete(playlistId);
+      this.cache.delete('all_playlists');
 
       console.log(`[SimpleDatabaseManager] ✅ Deleted playlist: ${playlistId}`);
       return true;
@@ -246,12 +276,40 @@ class SimpleDatabaseManager {
     }
   }
 
+  // Caching methods
+  _getFromCache(key) {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+      return cached.data;
+    }
+    this.cache.delete(key);
+    return null;
+  }
+
+  _setCache(key, data) {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+    
+    // Clean up old cache entries
+    if (this.cache.size > 50) {
+      const oldestKey = this.cache.keys().next().value;
+      this.cache.delete(oldestKey);
+    }
+  }
+
+  _clearCache() {
+    this.cache.clear();
+  }
+
   // Utility methods
   async clearAllData() {
     try {
       console.log('[SimpleDatabaseManager] 🧹 Clearing all data...');
       
       await localforage.dropInstance({ name: 'playlist-store' });
+      this._clearCache();
       
       console.log('[SimpleDatabaseManager] ✅ Cleared all data');
       return true;

@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSimplePlaylistStore } from '@/store/simple-playlist';
 import NetflixHeader from '@/components/netflix-header';
 import NetflixRow from '@/components/netflix-row';
 import NetflixHero from '@/components/netflix-hero';
 import { NetflixHomePageSkeleton } from '@/components/netflix-skeleton-loading';
-import { Film, Wifi, WifiOff, Search, Database } from 'lucide-react';
+import { Film, Wifi, WifiOff } from 'lucide-react';
 import { ErrorBoundary } from 'react-error-boundary';
 
 // Error fallback component
@@ -37,7 +37,7 @@ function ErrorFallback({ error, resetErrorBoundary }) {
 // Database status indicator
 function DatabaseStatus() {
   const isInitialized = useSimplePlaylistStore((state) => state.isInitialized);
-  
+
   return (
     <div className="flex items-center gap-2 text-xs text-gray-400">
       <div className={`w-2 h-2 rounded-full ${isInitialized ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`} />
@@ -51,7 +51,7 @@ function DatabaseStatus() {
 // Main Movies Page Component
 export default function MoviesPage() {
   console.log('[MoviesPage] 🔥 Component rendering');
-  
+
   const {
     loadDefaultPlaylist,
     getPlaylistCounts,
@@ -64,27 +64,31 @@ export default function MoviesPage() {
   } = useSimplePlaylistStore();
 
   const [currentPlaylist, setCurrentPlaylist] = useState(null);
-  const [currentCounts, setCurrentCounts] = useState(null);
   const [noPlaylistMessage, setNoPlaylistMessage] = useState(null);
   const [hasTriedLoading, setHasTriedLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isOnline, setIsOnline] = useState(true);
   const [performanceMode, setPerformanceMode] = useState(false);
 
-  // Initialize store on mount
+  // Initialize store on mount - only if not already initialized
   useEffect(() => {
-    console.log('[MoviesPage] 🚀 Component mounted, calling initializeStore...');
-    initializeStore();
-  }, [initializeStore]);
+    console.log('[MoviesPage] 🚀 Component mounted, checking initialization...');
+    if (!isInitialized) {
+      console.log('[MoviesPage] 🚀 Calling initializeStore...');
+      initializeStore();
+    } else {
+      console.log('[MoviesPage] ⏭️ Store already initialized');
+    }
+  }, [isInitialized, initializeStore]);
 
   // Monitor online status
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-    
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -101,7 +105,7 @@ export default function MoviesPage() {
           return;
         }
       }
-      
+
       // Check for slow CPU
       if ('hardwareConcurrency' in navigator) {
         if (navigator.hardwareConcurrency < 4) {
@@ -109,13 +113,13 @@ export default function MoviesPage() {
           return;
         }
       }
-      
+
       // Check for mobile devices
       if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
         setPerformanceMode(true);
       }
     };
-    
+
     checkPerformance();
   }, []);
 
@@ -129,11 +133,8 @@ export default function MoviesPage() {
         if (result.success && result.data && !result.noPlaylist) {
           const playlist = result.data;
           console.log('[MoviesPage] ✅ Setting loaded playlist:', playlist._meta?.name || 'Unknown');
-          
-          const playlistStoreId = `${playlist._meta?.baseUrl}|${playlist._meta?.username}`;
-          
+
           setCurrentPlaylist(playlist);
-          setCurrentCounts(getPlaylistCounts(playlistStoreId));
         } else if (result.noPlaylist) {
           console.log('[MoviesPage] ⚠️ No playlist message:', result.message);
           setNoPlaylistMessage(result.message);
@@ -145,7 +146,6 @@ export default function MoviesPage() {
             if (cachedPlaylist) {
               console.log('[MoviesPage] ✅ Using cached playlist');
               setCurrentPlaylist(cachedPlaylist);
-              setCurrentCounts(getPlaylistCounts(defaultPlaylistId));
             }
           }
         }
@@ -155,22 +155,15 @@ export default function MoviesPage() {
     }
   }, [isInitialized, currentPlaylist, hasTriedLoading, globalLoading, loadDefaultPlaylist, getPlaylistCounts]);
 
-  // Handle search
-  const handleSearch = async (query) => {
-    if (query.trim().length >= 2) {
-      // For movies page, search within movies
-      console.log('[MoviesPage] 🔍 Searching movies:', query);
-    }
-  };
 
-  // Process data for display - Netflix style horizontal rows
+  // Process data for display - Netflix style horizontal rows (lazy loaded)
   const categorizedData = useMemo(() => {
     console.log('[MoviesPage] 🔄 useMemo recalculating categorizedData:', {
       currentPlaylist: !!currentPlaylist,
       searchQuery,
       hasGetCategorizedStreams: typeof getCategorizedStreams === 'function'
     });
-    
+
     if (!currentPlaylist) {
       return [];
     }
@@ -193,22 +186,26 @@ export default function MoviesPage() {
         return [];
       }
 
-      const result = categorizedStreams.map((category, index) => {
+      // Process only first few categories initially for faster loading
+      const initialCategories = categorizedStreams.slice(0, 10);
+      const result = initialCategories.map((category, index) => {
         const categoryName = category.categoryName || category.category_name || category.name || 'Unknown Category';
         const streams = Array.isArray(category.streams)
-          ? category.streams
-          : (Array.isArray(category.items) ? category.items : []);
+          ? category.streams.slice(0, 20) // Limit initial streams per category
+          : (Array.isArray(category.items) ? category.items.slice(0, 20) : []);
         const categoryId = category.categoryId || category.category_id || `category-${categoryName.replace(/[^a-zA-Z0-9]/g, '-')}-${index}`;
-        
+
         return {
           name: categoryName,
           items: streams,
           count: streams.length,
-          categoryId: categoryId
+          categoryId: categoryId,
+          totalItems: category.streams?.length || category.items?.length || 0,
+          hasMore: (category.streams?.length || category.items?.length || 0) > 20
         };
       });
 
-      console.log('[MoviesPage] ✅ Processed categories:', result.length);
+      console.log('[MoviesPage] ✅ Processed initial categories:', result.length);
       return result;
     } catch (error) {
       console.error('[MoviesPage] ❌ Error processing categorized data:', error);
@@ -221,7 +218,7 @@ export default function MoviesPage() {
     if (!categorizedData.length || !categorizedData[0]?.items?.length) {
       return null;
     }
-    
+
     // Get some featured items from different categories
     const featuredItems = [];
     categorizedData.slice(0, 3).forEach(category => {
@@ -234,7 +231,7 @@ export default function MoviesPage() {
         });
       }
     });
-    
+
     return featuredItems.length > 0 ? featuredItems : null;
   }, [categorizedData]);
 
@@ -242,7 +239,6 @@ export default function MoviesPage() {
   const handleRetry = () => {
     clearError();
     setCurrentPlaylist(null);
-    setCurrentCounts(null);
     setNoPlaylistMessage(null);
     setHasTriedLoading(false);
     setSearchQuery('');
@@ -255,11 +251,11 @@ export default function MoviesPage() {
 
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
-      <div className="min-h-screen bg-black">
+      <div className="h-screen bg-black overflow-hidden">
         {/* Netflix Header */}
-        <NetflixHeader 
+        <NetflixHeader
           profile={{ name: 'User', email: 'user@example.com' }}
-          onSearch={handleSearch}
+          onSearch={() => { }}
         />
 
         {/* Hero Section */}
@@ -269,21 +265,9 @@ export default function MoviesPage() {
           )}
         </div>
 
-        {/* Movies Indicator */}
-        <div className="sticky top-16 z-40 bg-black/95 backdrop-blur-sm border-b border-gray-800">
-          <div className="flex items-center px-4 sm:px-8 py-4">
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className="text-blue-500 font-medium text-sm">MOVIES</span>
-              <span className="text-gray-400 text-sm">
-                {currentCounts?.totalVod?.toLocaleString() || '0'} MOVIES
-              </span>
-            </div>
-          </div>
-        </div>
 
         {/* Content Area */}
-        <div className="relative -mt-32 z-10 pb-20">
+        <div className="relative z-10 pb-20">
           {noPlaylistMessage && !currentPlaylist ? (
             <div className="h-full flex items-center justify-center bg-black text-white p-6">
               <div className="text-center max-w-md">
