@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense, useCallback } from 'react';
 import { useSimplePlaylistStore } from '@/store/simple-playlist';
 import { List } from 'react-window';
-import { Play, Tv, Film, MonitorSpeaker, Search, Database, Wifi, WifiOff } from 'lucide-react';
+import { Play, Tv, Film, MonitorSpeaker, Search, Database, Wifi, WifiOff, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ErrorBoundary } from 'react-error-boundary';
 import PlaylistLoading from './playlist-loading';
 
@@ -123,9 +123,93 @@ function SearchBar({ value, onChange, onSearch }) {
   );
 }
 
+// Hero Banner Component (moved outside)
+function HeroBanner({ featuredItems }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Auto-rotate every 5 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % featuredItems.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [featuredItems.length]);
+
+  const handlePrev = () => {
+    setCurrentIndex((prev) => (prev - 1 + featuredItems.length) % featuredItems.length);
+  };
+
+  const handleNext = () => {
+    setCurrentIndex((prev) => (prev + 1) % featuredItems.length);
+  };
+
+  if (!featuredItems?.length) return null;
+
+  const currentItem = featuredItems[currentIndex];
+
+  return (
+    <div className="relative h-[56.25vw] max-h-[70vh] min-h-[400px] mb-8 overflow-hidden">
+      {/* Background Image */}
+      <div className="absolute inset-0">
+        <img
+          src={currentItem.stream_icon || currentItem.image || '/placeholder-hero.jpg'}
+          alt={currentItem.name}
+          className="w-full h-full object-cover transition-all duration-500"
+          loading="eager"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-black" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black via-black/40 to-transparent" />
+      </div>
+
+      {/* Content Overlay */}
+      <div className="absolute bottom-0 left-0 right-0 p-8 max-w-2xl">
+        <h2 className="text-4xl font-bold text-white mb-4 drop-shadow-lg">
+          {currentItem.name}
+        </h2>
+        <p className="text-white text-lg mb-6 line-clamp-3 drop-shadow-md">
+          {currentItem.plot || currentItem.description || 'Watch now on our platform'}
+        </p>
+        <div className="flex gap-4">
+          <button className="flex items-center gap-2 px-6 py-3 bg-white text-black rounded font-semibold hover:bg-white/90 transition-colors">
+            <Play className="w-5 h-5 fill-current" /> Play
+          </button>
+          <button className="flex items-center gap-2 px-6 py-3 bg-neutral-700/70 text-white rounded font-semibold hover:bg-neutral-700 transition-colors">
+            More Info
+          </button>
+        </div>
+      </div>
+
+      {/* Navigation Controls */}
+      <button
+        onClick={handlePrev}
+        className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 p-2 rounded-full hover:bg-black/70 transition-colors"
+      >
+        <ChevronLeft className="w-6 h-6 text-white" />
+      </button>
+      <button
+        onClick={handleNext}
+        className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 p-2 rounded-full hover:bg-black/70 transition-colors"
+      >
+        <ChevronRight className="w-6 h-6 text-white" />
+      </button>
+
+      {/* Indicators */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+        {featuredItems.map((_, index) => (
+          <div
+            key={index}
+            className={`w-2 h-2 rounded-full transition-all ${
+              index === currentIndex ? 'bg-white scale-125' : 'bg-white/50'
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Main home page component
 export default function HomePage() {
-  console.log('[HomePage] 🔥 Component rendering');
   
   const {
     loadDefaultPlaylist,
@@ -141,12 +225,6 @@ export default function HomePage() {
     initializeStore
   } = useSimplePlaylistStore();
 
-  console.log('[HomePage] 📊 Store state:', {
-    isInitialized,
-    globalLoading,
-    error,
-    hasPlaylists: Object.keys(useSimplePlaylistStore.getState().playlists).length
-  });
 
   const [currentPlaylist, setCurrentPlaylist] = useState(null);
   const [currentCounts, setCurrentCounts] = useState(null);
@@ -160,7 +238,6 @@ export default function HomePage() {
 
   // Initialize store on mount
   useEffect(() => {
-    console.log('[HomePage] 🚀 Component mounted, calling initializeStore...');
     initializeStore();
   }, [initializeStore]);
 
@@ -209,14 +286,11 @@ export default function HomePage() {
   // Load default playlist when ready
   useEffect(() => {
     if (isInitialized && !currentPlaylist && !hasTriedLoading && !globalLoading) {
-      console.log('[HomePage] 🎯 Loading default playlist...');
       setHasTriedLoading(true);
       loadDefaultPlaylist().then(result => {
-        console.log('[HomePage] 📝 Default playlist result:', result);
         if (result.success && result.data && !result.noPlaylist) {
           // Use the loaded playlist data directly
           const playlist = result.data;
-          console.log('[HomePage] ✅ Setting loaded playlist:', playlist._meta?.name || 'Unknown');
           
           // Create a playlist store ID
           const playlistStoreId = `${playlist._meta?.baseUrl}|${playlist._meta?.username}`;
@@ -224,7 +298,6 @@ export default function HomePage() {
           setCurrentPlaylist(playlist);
           setCurrentCounts(getPlaylistCounts(playlistStoreId));
         } else if (result.noPlaylist) {
-          console.log('[HomePage] ⚠️ No playlist message:', result.message);
           setNoPlaylistMessage(result.message);
         } else if (result.cached) {
           // Playlist was already cached, find it in the store
@@ -233,14 +306,13 @@ export default function HomePage() {
           if (defaultPlaylistId) {
             const cachedPlaylist = state.playlists[defaultPlaylistId];
             if (cachedPlaylist) {
-              console.log('[HomePage] ✅ Using cached playlist');
               setCurrentPlaylist(cachedPlaylist);
               setCurrentCounts(getPlaylistCounts(defaultPlaylistId));
             }
           }
         }
       }).catch(error => {
-        console.error('[HomePage] ❌ Error loading default playlist:', error);
+        console.error('Error loading default playlist:', error);
       });
     }
   }, [isInitialized, currentPlaylist, hasTriedLoading, globalLoading, loadDefaultPlaylist, getPlaylistCounts]);
@@ -258,12 +330,6 @@ export default function HomePage() {
   const handleTabChange = useCallback((newTab) => {
     if (newTab === activeTab || isTabSwitching) return;
     
-    console.log('[HomePage] 🔄 Tab change:', {
-      fromTab: activeTab,
-      toTab: newTab,
-      isTabSwitching,
-      currentPlaylist: !!currentPlaylist
-    });
     
     setIsTabSwitching(true);
     setActiveTab(newTab);
@@ -278,13 +344,6 @@ export default function HomePage() {
 
   // Process data for display
   const categorizedData = useMemo(() => {
-    console.log('[HomePage] 🔄 useMemo recalculating categorizedData:', {
-      currentPlaylist: !!currentPlaylist,
-      activeTab,
-      searchQuery,
-      searchResultsLength: searchResults.length,
-      hasGetCategorizedStreams: typeof getCategorizedStreams === 'function'
-    });
     if (searchQuery && searchResults.length > 0) {
       // Show search results
       const searchCategories = [{
@@ -310,40 +369,18 @@ export default function HomePage() {
       let categorizedStreams;
       if (playlistKey) {
         categorizedStreams = getCategorizedStreams(playlistKey, activeTab);
-        console.log('[HomePage] 📂 Got categorizedStreams from store:', {
-          playlistKey,
-          activeTab,
-          isArray: Array.isArray(categorizedStreams),
-          count: categorizedStreams?.length,
-          firstCategory: categorizedStreams?.[0]
-        });
       } else {
         // Fallback: use currentPlaylist directly if it has the right structure
         categorizedStreams = currentPlaylist.categorizedStreams?.[activeTab === 'movies' ? 'vod' : activeTab] || [];
-        console.log('[HomePage] 📂 Got categorizedStreams from fallback:', {
-          activeTab,
-          isArray: Array.isArray(categorizedStreams),
-          count: categorizedStreams?.length,
-          firstCategory: categorizedStreams?.[0]
-        });
       }
 
       // Ensure categorizedStreams is an array
       if (!Array.isArray(categorizedStreams)) {
-        console.warn('[HomePage] ⚠️ categorizedStreams is not an array:', categorizedStreams);
+        console.warn('categorizedStreams is not an array:', categorizedStreams);
         return [];
       }
 
       const result = categorizedStreams.map((category, index) => {
-        console.log('[HomePage] 📂 Processing category:', {
-          categoryKeys: Object.keys(category),
-          categoryName: category.categoryName,
-          category_name: category.category_name,
-          name: category.name,
-          category,
-          streams: category.streams,
-          streamsLength: category.streams?.length
-        });
         
         const categoryName = category.categoryName || category.category_name || category.name || 'Unknown Category';
         // Determine the actual list of streams for this category.
@@ -353,12 +390,6 @@ export default function HomePage() {
           : (Array.isArray(category.items) ? category.items : []);
         const categoryId = category.categoryId || category.category_id || `category-${categoryName.replace(/[^a-zA-Z0-9]/g, '-')}-${index}`;
         
-        console.log('[HomePage] 📋 Creating category object:', {
-          categoryName,
-          categoryId,
-          streamsLength: streams.length,
-          hasStreams: streams.length > 0
-        });
         
         return {
           name: categoryName,
@@ -368,17 +399,32 @@ export default function HomePage() {
         };
       });
 
-      console.log('[HomePage] 📊 Final categorizedData:', {
-        resultCount: result.length,
-        firstResult: result[0]
-      });
 
       return result;
     } catch (error) {
-      console.error('[HomePage] ❌ Error processing categorized data:', error);
+      console.error('Error processing categorized data:', error);
       return [];
     }
   }, [currentPlaylist, activeTab, searchQuery, searchResults, getCategorizedStreams]);
+
+  const featuredItems = useMemo(() => {
+    if (!categorizedData?.length) return [];
+    
+    // Select first 5 items from first category as featured
+    // Prioritize movies or live content
+    const priorityCategory = categorizedData.find(cat => 
+      cat.name.toLowerCase().includes('featured') || 
+      cat.name.toLowerCase().includes('popular') ||
+      cat.items.length >= 5
+    ) || categorizedData[0];
+    
+    return priorityCategory.items.slice(0, 5).map(item => ({
+      ...item,
+      // Add fallback images or descriptions if needed
+      description: item.plot || item.description || 'Featured content',
+      backgroundImage: item.backdrop_path || item.stream_icon || '/placeholder-hero.jpg'
+    }));
+  }, [categorizedData]);
 
   // Handle retry
   const handleRetry = () => {
@@ -403,6 +449,14 @@ export default function HomePage() {
       </div>
     );
   }
+
+  // In the main component, add featured items selection
+  // const featuredItems = useMemo(() => {
+  //   if (!categorizedData?.length) return [];
+    
+  //   // Select first 5 items from first category as featured
+  //   return categorizedData[0].items.slice(0, 5);
+  // }, [categorizedData]);
 
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
@@ -504,15 +558,18 @@ export default function HomePage() {
           ) : isTabSwitching ? (
             <PlaylistLoading message="Switching categories..." showAnalytics={false} />
           ) : (
-            <Suspense fallback={<PlaylistLoading message="Loading content..." />}>
-              <VirtualizedCategoryList
-                categories={categorizedData}
-                activeTab={activeTab}
-                searchQuery={searchQuery}
-                isSearchResults={!!searchQuery}
-                performanceMode={performanceMode}
-              />
-            </Suspense>
+            <>
+              <HeroBanner featuredItems={featuredItems} />
+              <Suspense fallback={<PlaylistLoading message="Loading content..." />}>
+                <VirtualizedCategoryList
+                  categories={categorizedData}
+                  activeTab={activeTab}
+                  searchQuery={searchQuery}
+                  isSearchResults={!!searchQuery}
+                  performanceMode={performanceMode}
+                />
+              </Suspense>
+            </>
           )}
         </div>
       </div>

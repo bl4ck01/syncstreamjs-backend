@@ -54,12 +54,12 @@ export default function CategoryHomeLayout() {
                 if (!currentPlaylist && !hasTriedLoading && Object.keys(state.playlists || {}).length > 0) {
                     console.log('[CategoryHomeLayout] Found cached data on mount - using immediately');
                     const playlists = Object.values(state.playlists);
-                    const validPlaylist = playlists.find(p => 
-                        p.categorizedStreams?.live?.length || 
-                        p.categorizedStreams?.vod?.length || 
+                    const validPlaylist = playlists.find(p =>
+                        p.categorizedStreams?.live?.length ||
+                        p.categorizedStreams?.vod?.length ||
                         p.categorizedStreams?.series?.length ||
-                        p.streams?.live || 
-                        p.streams?.vod || 
+                        p.streams?.live ||
+                        p.streams?.vod ||
                         p.streams?.series
                     );
 
@@ -96,12 +96,12 @@ export default function CategoryHomeLayout() {
             // First, check if we have any cached playlists
             const state = usePlaylistStore.getState();
             const playlists = Object.values(state.playlists);
-            const cachedPlaylist = playlists.find(p => 
-                p.categorizedStreams?.live?.length || 
-                p.categorizedStreams?.vod?.length || 
+            const cachedPlaylist = playlists.find(p =>
+                p.categorizedStreams?.live?.length ||
+                p.categorizedStreams?.vod?.length ||
                 p.categorizedStreams?.series?.length ||
-                p.streams?.live || 
-                p.streams?.vod || 
+                p.streams?.live ||
+                p.streams?.vod ||
                 p.streams?.series
             );
 
@@ -129,12 +129,12 @@ export default function CategoryHomeLayout() {
                         if (result.data && !result.noPlaylist) {
                             const state = usePlaylistStore.getState();
                             const playlists = Object.values(state.playlists);
-                            const defaultPlaylist = playlists.find(p => 
-                                p.categorizedStreams?.live?.length || 
-                                p.categorizedStreams?.vod?.length || 
+                            const defaultPlaylist = playlists.find(p =>
+                                p.categorizedStreams?.live?.length ||
+                                p.categorizedStreams?.vod?.length ||
                                 p.categorizedStreams?.series?.length ||
-                                p.streams?.live || 
-                                p.streams?.vod || 
+                                p.streams?.live ||
+                                p.streams?.vod ||
                                 p.streams?.series
                             );
 
@@ -193,7 +193,7 @@ export default function CategoryHomeLayout() {
 
         // Get pre-categorized streams using the new efficient method
         const categorizedStreams = getCategorizedStreams(playlistKey, activeTab);
-        
+
         console.log('[CategoryHomeLayout] Got categorized streams:', {
             count: categorizedStreams.length,
             activeTab,
@@ -209,7 +209,7 @@ export default function CategoryHomeLayout() {
                 count: category.streamCount,
                 categoryId: category.categoryId
             }));
-            
+
             console.log('[CategoryHomeLayout] Final categorized data:', result.length, 'categories');
             return result;
         }
@@ -369,8 +369,8 @@ function TabButton({ active, onClick, icon: Icon, label, count }) {
         <button
             onClick={onClick}
             className={`flex items-center gap-2 px-4 py-2 rounded-full mr-4 transition-all duration-200 ${active
-                    ? 'bg-red-600 text-white'
-                    : 'bg-neutral-800/50 text-neutral-300 hover:bg-neutral-700/50 hover:text-white'
+                ? 'bg-red-600 text-white'
+                : 'bg-neutral-800/50 text-neutral-300 hover:bg-neutral-700/50 hover:text-white'
                 }`}
         >
             <Icon className="w-4 h-4" />
@@ -427,13 +427,13 @@ function VirtualCategoryList({ categories, activeTab }) {
 
 // Category Row Component for virtual scrolling
 function CategoryRow({ index, style, categories, activeTab }) {
-	const category = categories[index];
+    const category = categories[index];
 
-	return (
-		<div style={style} className="px-4 sm:px-6 py-4">
-			<CategoryRowContent category={category} activeTab={activeTab} />
-		</div>
-	);
+    return (
+        <div style={style} className="px-4 sm:px-6 py-4">
+            <CategoryRowContent category={category} activeTab={activeTab} />
+        </div>
+    );
 }
 
 // Category Row Content Component with horizontal virtual scrolling
@@ -523,82 +523,82 @@ function ContentCard({ item, type }) {
         setImageError(true);
     }, []);
 
-	return (
-		<div className="flex-shrink-0 w-48 bg-black rounded-lg overflow-hidden cursor-pointer group transition-all duration-300 hover:scale-105 hover:z-10">
-			<div className="aspect-video bg-neutral-800 relative overflow-hidden rounded-lg">
-				{item.stream_icon && !imageError ? (
-					<img
-						src={item.stream_icon}
-						alt={item.name}
-						className="w-full h-full object-cover"
-						onError={handleImageError}
-						loading="lazy"
-					/>
-				) : (
-					<div className="w-full h-full flex items-center justify-center bg-neutral-800">
-						{type === 'live' && <Tv className="w-8 h-8 text-neutral-600" />}
-						{type === 'movies' && <Film className="w-8 h-8 text-neutral-600" />}
-						{type === 'series' && <MonitorSpeaker className="w-8 h-8 text-neutral-600" />}
-					</div>
-				)}
-				
-				<div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-all duration-300 flex items-center justify-center">
-					<Play className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-all duration-300 transform scale-75 group-hover:scale-100" />
-				</div>
-			</div>
-			
-			<div className="p-3">
-				<h4 className="font-medium text-white text-sm line-clamp-2 mb-1">
-					{item.name}
-				</h4>
-			</div>
-		</div>
-	);
+    return (
+        <div className="flex-shrink-0 w-48 bg-black rounded-lg overflow-hidden cursor-pointer group transition-all duration-300 hover:scale-105 hover:z-10">
+            <div className="aspect-video bg-neutral-800 relative overflow-hidden rounded-lg">
+                {item.stream_icon && !imageError ? (
+                    <img
+                        src={item.stream_icon}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                        onError={handleImageError}
+                        loading="lazy"
+                    />
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-neutral-800">
+                        {type === 'live' && <Tv className="w-8 h-8 text-neutral-600" />}
+                        {type === 'movies' && <Film className="w-8 h-8 text-neutral-600" />}
+                        {type === 'series' && <MonitorSpeaker className="w-8 h-8 text-neutral-600" />}
+                    </div>
+                )}
+
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-all duration-300 flex items-center justify-center">
+                    <Play className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-all duration-300 transform scale-75 group-hover:scale-100" />
+                </div>
+            </div>
+
+            <div className="p-3">
+                <h4 className="font-medium text-white text-sm line-clamp-2 mb-1">
+                    {item.name}
+                </h4>
+            </div>
+        </div>
+    );
 }
 
 // Empty State Component
 function EmptyState({ activeTab, searchQuery }) {
-	const getIcon = () => {
-		switch (activeTab) {
-			case 'live': return <Tv className="w-16 h-16 text-neutral-600" />;
-			case 'movies': return <Film className="w-16 h-16 text-neutral-600" />;
-			case 'series': return <MonitorSpeaker className="w-16 h-16 text-neutral-600" />;
-			default: return <Tv className="w-16 h-16 text-neutral-600" />;
-		}
-	};
+    const getIcon = () => {
+        switch (activeTab) {
+            case 'live': return <Tv className="w-16 h-16 text-neutral-600" />;
+            case 'movies': return <Film className="w-16 h-16 text-neutral-600" />;
+            case 'series': return <MonitorSpeaker className="w-16 h-16 text-neutral-600" />;
+            default: return <Tv className="w-16 h-16 text-neutral-600" />;
+        }
+    };
 
-	const getTitle = () => {
-		if (searchQuery) {
-			return `No results for "${searchQuery}"`;
-		}
-		switch (activeTab) {
-			case 'live': return 'No Live Channels';
-			case 'movies': return 'No Movies Available';
-			case 'series': return 'No Series Available';
-			default: return 'No Content Available';
-		}
-	};
+    const getTitle = () => {
+        if (searchQuery) {
+            return `No results for "${searchQuery}"`;
+        }
+        switch (activeTab) {
+            case 'live': return 'No Live Channels';
+            case 'movies': return 'No Movies Available';
+            case 'series': return 'No Series Available';
+            default: return 'No Content Available';
+        }
+    };
 
-	const getDescription = () => {
-		if (searchQuery) {
-			return 'Try adjusting your search terms or browse different categories.';
-		}
-		return 'This playlist doesn\'t contain any content in this category yet.';
-	};
+    const getDescription = () => {
+        if (searchQuery) {
+            return 'Try adjusting your search terms or browse different categories.';
+        }
+        return 'This playlist doesn\'t contain any content in this category yet.';
+    };
 
-	return (
-		<div className="h-full flex items-center justify-center">
-			<div className="text-center max-w-md">
-				<div className="w-20 h-20 mx-auto mb-6 rounded-full bg-neutral-900/50 flex items-center justify-center">
-					{getIcon()}
-				</div>
-				<h3 className="text-xl font-semibold text-white mb-3">
-					{getTitle()}
-				</h3>
-				<p className="text-neutral-400 text-sm">
-					{getDescription()}
-				</p>
-			</div>
-		</div>
-	);
+    return (
+        <div className="h-full flex items-center justify-center">
+            <div className="text-center max-w-md">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-neutral-900/50 flex items-center justify-center">
+                    {getIcon()}
+                </div>
+                <h3 className="text-xl font-semibold text-white mb-3">
+                    {getTitle()}
+                </h3>
+                <p className="text-neutral-400 text-sm">
+                    {getDescription()}
+                </p>
+            </div>
+        </div>
+    );
 }

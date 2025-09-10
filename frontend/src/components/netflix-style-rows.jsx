@@ -28,16 +28,6 @@ const NetflixRow = React.memo(({
   const containerRef = React.useRef(null);
   const [dimensions, setDimensions] = React.useState({ width: 0, height: 0 });
 
-  // Debug container ref
-  React.useEffect(() => {
-    console.log('[NetflixRow] 📦 Container ref debug:', {
-      categoryId: category.categoryId || category.name,
-      containerRef: containerRef.current,
-      containerExists: !!containerRef.current,
-      containerWidth: containerRef.current?.offsetWidth,
-      containerHeight: containerRef.current?.offsetHeight
-    });
-  }, [category.categoryId, category.name]);
 
   // Calculate responsive item dimensions (Netflix-style)
   const getItemWidth = () => {
@@ -63,12 +53,6 @@ const NetflixRow = React.memo(({
           width: Math.max(0, rect.width),
           height: Math.max(100, itemHeight + 20) // Extra space for title
         };
-        console.log('[NetflixRow] 📏 Updating dimensions:', {
-          categoryId: category.categoryId || category.name,
-          rect: { width: rect.width, height: rect.height },
-          newDimensions,
-          itemHeight
-        });
         setDimensions(newDimensions);
       }
     };
@@ -94,12 +78,6 @@ const NetflixRow = React.memo(({
       if (dimensions.width === 0 && containerRef.current) {
         const fallbackWidth = Math.max(0, containerRef.current.offsetWidth || window.innerWidth - 32); // Account for padding
         const fallbackHeight = Math.max(100, itemHeight + 20);
-        console.log('[NetflixRow] 🔄 Using fallback dimensions:', {
-          categoryId: category.categoryId || category.name,
-          fallbackWidth,
-          fallbackHeight,
-          windowWidth: window.innerWidth
-        });
         setDimensions({ width: fallbackWidth, height: fallbackHeight });
       }
     }, 1000); // Wait 1 second before fallback
@@ -120,24 +98,8 @@ const NetflixRow = React.memo(({
 
   // Initialize with first chunk
   React.useEffect(() => {
-    console.log('[NetflixRow] 🔍 Chunk initialization check:', {
-      categoryId: category.categoryId || category.name,
-      hasCategoryItems: !!category.items,
-      categoryItemsLength: category.items?.length,
-      loadedItemsLength: loadedItems.length,
-      shouldInitialize: category.items && category.items.length > 0 && loadedItems.length === 0
-    });
 
     if (category.items && category.items.length > 0 && loadedItems.length === 0) {
-      console.log('[NetflixRow] 🚀 Initializing first chunk:', {
-        categoryId: category.categoryId || category.name,
-        totalItems: category.items.length,
-        chunkSize: CHUNK_SIZE,
-        firstChunkLength: Math.min(CHUNK_SIZE, category.items.length),
-        firstItemSample: category.items[0],
-        categoryItemsType: typeof category.items[0],
-        isArray: Array.isArray(category.items)
-      });
       const firstChunk = category.items.slice(0, CHUNK_SIZE);
       setLoadedItems(firstChunk);
       setHasLoadedAll(category.items.length <= CHUNK_SIZE);
@@ -217,18 +179,6 @@ const NetflixRow = React.memo(({
     );
   };
 
-  console.log('[NetflixRow] 🎬 Render state:', {
-    categoryId: category.categoryId || category.name,
-    dimensions,
-    loadedItemsLength: loadedItems.length,
-    totalItems: category.items?.length,
-    hasLoadedAll,
-    isLoadingMore,
-    itemWidth,
-    itemHeight,
-    gap,
-    canRender: dimensions.width > 0 && loadedItems.length > 0 && typeof ItemRenderer === 'function'
-  });
 
   return (
     <div className="space-y-3 mb-8">
@@ -265,16 +215,6 @@ const NetflixRow = React.memo(({
           const width = Math.max(300, dimensions.width || window.innerWidth - 32); // Ensure minimum width
           const height = Math.max(200, dimensions.height || itemHeight + 40); // Ensure minimum height
           
-          console.log('[NetflixRow] 🎯 List render decision:', {
-            categoryId: category.categoryId || category.name,
-            canRender,
-            loadedItemsLength: loadedItems.length,
-            isItemLoadedFunction: typeof isItemLoaded === 'function',
-            loadMoreItemsFunction: typeof loadMoreItems === 'function',
-            width,
-            height,
-            itemSize: Math.max(50, itemWidth + gap)
-          });
 
           if (!canRender) {
             return (
