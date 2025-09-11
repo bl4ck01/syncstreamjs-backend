@@ -11,6 +11,25 @@ import {
 } from '@/lib/simple-database';
 import { fetchPlaylistData } from '@/lib/proxy';
 
+// Memoization cache for expensive operations
+const memoCache = new Map();
+const getMemoKey = (fn, args) => `${fn.name}:${JSON.stringify(args)}`;
+
+function memoize(fn) {
+  return (...args) => {
+    const key = getMemoKey(fn, args);
+    if (memoCache.has(key)) {
+      return memoCache.get(key);
+    }
+    const result = fn(...args);
+    memoCache.set(key, result);
+    
+    // Clear cache after 5 minutes
+    setTimeout(() => memoCache.delete(key), 5 * 60 * 1000);
+    return result;
+  };
+}
+
 // Simplified playlist store without complex dependencies
 export const useSimplePlaylistStore = create(
   subscribeWithSelector((set, get) => ({
@@ -28,7 +47,7 @@ export const useSimplePlaylistStore = create(
     // Selectors
     hasPlaylistData: (playlistId) => {
       const playlist = get().playlists[playlistId];
-      return !!(
+      const hasData = !!(
         playlist?.categorizedStreams?.live?.length || 
         playlist?.categorizedStreams?.vod?.length || 
         playlist?.categorizedStreams?.series?.length ||
@@ -36,27 +55,58 @@ export const useSimplePlaylistStore = create(
         playlist?.streams?.vod || 
         playlist?.streams?.series
       );
+      
+      console.log('[SimplePlaylistStore] 🔍 hasPlaylistData:', {
+        playlistId,
+        hasData,
+        hasCategorizedStreams: !!playlist?.categorizedStreams,
+        hasStreams: !!playlist?.streams,
+        liveCount: playlist?.categorizedStreams?.live?.length || 0,
+        vodCount: playlist?.categorizedStreams?.vod?.length || 0,
+        seriesCount: playlist?.categorizedStreams?.series?.length || 0
+      });
+      
+      return hasData;
     },
 
     getPlaylistData: (playlistId) => {
       return get().playlists[playlistId] || null;
     },
 
-    getCategorizedStreams: (playlistId, type = 'live') => {
-      const playlist = get().playlists[playlistId];
-      if (!playlist) return [];
-
-      console.log('[SimplePlaylistStore] 📂 Getting categorized streams:', {
-        playlistId,
-        type,
-        hasCategorizedStreams: !!playlist.categorizedStreams,
-        categorizedStreamsKeys: playlist.categorizedStreams ? Object.keys(playlist.categorizedStreams) : [],
-        hasStreams: !!playlist.streams,
-        hasCategories: !!playlist.categories
+    currentPlaylist: () => {
+      const state = get();
+      const defaultPlaylistId = state.defaultPlaylistId;
+      if (!defaultPlaylistId) return null;
+      
+      // Find the playlist in the playlists object
+      const playlist = Object.values(state.playlists).find(p => {
+        if (!p._meta) return false;
+        const playlistId = `${p._meta.baseUrl}|${p._meta.username}`;
+        return playlistId === defaultPlaylistId;
       });
+      
+      console.log('[SimplePlaylistStore] 🎯 currentPlaylist selector:', {
+        defaultPlaylistId,
+        hasPlaylist: !!playlist,
+        playlistName: playlist?._meta?.name,
+        playlistId: playlist ? `${playlist._meta.baseUrl}|${playlist._meta.username}` : null
+      });
+      
+      return playlist;
+    },
+
+    getCategorizedStreams: memoize((playlistId, type = 'live') => {
+      console.log(`[SimplePlaylistStore] 📂 Getting categorized streams for playlist "${playlistId}", type "${type}"`);
+      
+      const playlist = get().playlists[playlistId];
+      if (!playlist) {
+        console.log(`[SimplePlaylistStore] ❌ No playlist found for ID: ${playlistId}`);
+        return [];
+      }
 
       // Use new categorized structure if available
       if (playlist.categorizedStreams) {
+        console.log('[SimplePlaylistStore] 🆕 Using new categorized streams structure');
         let result;
         switch (type) {
           case 'live': 
@@ -76,7 +126,7 @@ export const useSimplePlaylistStore = create(
         console.log('[SimplePlaylistStore] 📋 Found categorized streams:', {
           type,
           resultLength: result.length,
-          firstResult: result[0]
+          totalStreamsInResult: result.reduce((sum, cat) => sum + (cat.streams?.length || 0), 0)
         });
         
         return result;
@@ -84,14 +134,9 @@ export const useSimplePlaylistStore = create(
 
       // Fallback to old structure
       if (playlist.streams && playlist.categories) {
+        console.log('[SimplePlaylistStore] 🔄 Using fallback structure');
         const streams = playlist.streams[type === 'movies' ? 'vod' : type] || [];
         const categories = playlist.categories[type === 'movies' ? 'vod' : type] || [];
-        
-        console.log('[SimplePlaylistStore] 🔄 Using fallback structure:', {
-          type,
-          streamsCount: streams.length,
-          categoriesCount: categories.length
-        });
         
         // Group streams by category
         const categoryMap = {};
@@ -122,11 +167,18 @@ export const useSimplePlaylistStore = create(
           }
         });
 
-        return Object.values(categoryMap).filter(cat => cat.streamCount > 0);
+        const finalResult = Object.values(categoryMap).filter(cat => cat.streamCount > 0);
+        console.log('[SimplePlaylistStore] 📊 Fallback result:', {
+          totalCategories: finalResult.length,
+          totalStreams: finalResult.reduce((sum, cat) => sum + cat.streams, 0)
+        });
+
+        return finalResult;
       }
 
+      console.log('[SimplePlaylistStore] ❌ No data structure available');
       return [];
-    },
+    }),
 
     getPlaylistCounts: (playlistId) => {
       const playlist = get().playlists[playlistId];
@@ -185,6 +237,34 @@ export const useSimplePlaylistStore = create(
         }
       };
     },
+
+    // Get optimized content by type (reduces memory usage)
+    getOptimizedContent: memoize(async (playlistId, type = 'vod', options = {}) => {
+      console.log('[SimplePlaylistStore] 🎯 Getting optimized content:', {
+        playlistId,
+        type,
+        options
+      });
+
+      try {
+        // Import the optimized database function
+        const { getContentByType } = await import('@/lib/simple-database');
+        
+        const result = await getContentByType(playlistId, type, options);
+        
+        console.log('[SimplePlaylistStore] ✅ Optimized content loaded:', {
+          type,
+          categoriesCount: result.categories.length,
+          totalStreams: result.total,
+          memoryEfficient: true
+        });
+        
+        return result;
+      } catch (error) {
+        console.error('[SimplePlaylistStore] ❌ Failed to get optimized content:', error);
+        return { categories: [], total: 0 };
+      }
+    }),
 
     // Actions
     initializeStore: async () => {
@@ -527,8 +607,15 @@ export const useSimplePlaylistStore = create(
   }))
 );
 
-// Auto-initialize store
+// Auto-initialize store (only once)
 if (typeof window !== 'undefined') {
-  console.log('[SimplePlaylistStore] 🚀 Auto-initializing store on window load');
-  useSimplePlaylistStore.getState().initializeStore();
+  console.log('[SimplePlaylistStore] 🚀 Setting up auto-initialization');
+  // Use a flag to prevent double initialization
+  if (!window.__simplePlaylistStoreInitialized) {
+    window.__simplePlaylistStoreInitialized = true;
+    console.log('[SimplePlaylistStore] 🚀 Auto-initializing store on window load');
+    useSimplePlaylistStore.getState().initializeStore();
+  } else {
+    console.log('[SimplePlaylistStore] ⏭️ Store already initialized, skipping');
+  }
 }

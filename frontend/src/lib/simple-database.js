@@ -6,6 +6,8 @@ class SimpleDatabaseManager {
     this.initialized = false;
     this.initializing = false;
     this.initPromise = null;
+    this.cache = new Map();
+    this.cacheTimeout = 2 * 60 * 1000; // 2 minutes
   }
 
   async initialize() {
@@ -89,6 +91,9 @@ class SimpleDatabaseManager {
 
       await store.setItem(playlistId, enrichedData);
       
+      // Update cache
+      this._setCache(playlistId, enrichedData);
+      
       console.log(`[SimpleDatabaseManager] ✅ Saved playlist: ${playlistId}`);
       return true;
     } catch (error) {
@@ -101,11 +106,20 @@ class SimpleDatabaseManager {
     try {
       console.log(`[SimpleDatabaseManager] 📂 Loading playlist: ${playlistId}`);
       
+      // Check cache first
+      const cached = this._getFromCache(playlistId);
+      if (cached) {
+        console.log(`[SimpleDatabaseManager] 🎯 Cache hit for playlist: ${playlistId}`);
+        return cached;
+      }
+      
       const store = localforage.createInstance({ name: 'playlist-store' });
       const data = await store.getItem(playlistId);
       
       if (data) {
         console.log(`[SimpleDatabaseManager] ✅ Loaded playlist: ${playlistId}`);
+        // Cache the result
+        this._setCache(playlistId, data);
       } else {
         console.log(`[SimpleDatabaseManager] ⚠️ No playlist found: ${playlistId}`);
       }
@@ -121,10 +135,18 @@ class SimpleDatabaseManager {
     try {
       console.log('[SimpleDatabaseManager] 📋 Loading all playlists...');
       
+      // Check cache first
+      const cacheKey = 'all_playlists';
+      const cached = this._getFromCache(cacheKey);
+      if (cached) {
+        console.log('[SimpleDatabaseManager] 🎯 Cache hit for all playlists');
+        return cached;
+      }
+      
       const store = localforage.createInstance({ name: 'playlist-store' });
       const playlists = [];
       
-  await store.iterate((value, key) => {
+      await store.iterate((value, key) => {
         // Skip internal keys and ensure valid data
         if (key !== 'playlist-store' && key !== '_test' && value && typeof value === 'object') {
           playlists.push({ id: key, ...value });
@@ -132,6 +154,10 @@ class SimpleDatabaseManager {
       });
 
       console.log(`[SimpleDatabaseManager] 📋 Loaded ${playlists.length} playlists`);
+      
+      // Cache the result
+      this._setCache(cacheKey, playlists);
+      
       return playlists;
     } catch (error) {
       console.error('[SimpleDatabaseManager] ❌ Failed to load playlists:', error);
@@ -145,6 +171,10 @@ class SimpleDatabaseManager {
       
       const store = localforage.createInstance({ name: 'playlist-store' });
       await store.removeItem(playlistId);
+
+      // Clear cache
+      this.cache.delete(playlistId);
+      this.cache.delete('all_playlists');
 
       console.log(`[SimpleDatabaseManager] ✅ Deleted playlist: ${playlistId}`);
       return true;
@@ -246,12 +276,142 @@ class SimpleDatabaseManager {
     }
   }
 
+  // Get optimized content by type (reduces memory usage)
+  async getContentByType(playlistId, type, options = {}) {
+    console.log(`[SimpleDatabaseManager] 🎯 Getting content by type:`, {
+      playlistId,
+      type,
+      options
+    });
+    
+    const { limit = 100, offset = 0, categoryId = null } = options;
+    
+    try {
+      const store = localforage.createInstance({ name: 'playlist-store' });
+      const playlistData = await store.getItem(playlistId);
+      
+      if (!playlistData?.categorizedStreams) {
+        console.log(`[SimpleDatabaseManager] ⚠️ No categorized streams found for playlist: ${playlistId}`);
+        return { categories: [], total: 0 };
+      }
+      
+      const categoriesData = playlistData.categorizedStreams[type] || [];
+      let result = [];
+      let totalStreams = 0;
+      
+      if (categoryId) {
+        // Get specific category
+        const targetCategory = categoriesData.find(cat => 
+          cat.categoryId === categoryId || 
+          cat.category_id === categoryId || 
+          cat.categoryName === categoryId || 
+          cat.category_name === categoryId ||
+          cat.name === categoryId
+        );
+        
+        if (targetCategory) {
+          const streams = (targetCategory.streams || []).slice(offset, offset + limit);
+          result = [{
+            ...targetCategory,
+            streams,
+            streamCount: streams.length,
+            totalStreamCount: targetCategory.streams?.length || 0
+          }];
+          totalStreams = targetCategory.streams?.length || 0;
+        }
+      } else {
+        // Get all categories with limited streams
+        result = categoriesData.map(category => ({
+          ...category,
+          streams: (category.streams || []).slice(0, limit), // Limit streams per category
+          streamCount: Math.min(limit, category.streams?.length || 0),
+          totalStreamCount: category.streams?.length || 0
+        }));
+        totalStreams = categoriesData.reduce((sum, cat) => sum + (cat.streams?.length || 0), 0);
+      }
+      
+      console.log(`[SimpleDatabaseManager] ✅ Retrieved ${result.length} categories, ${totalStreams} total streams for type: ${type}`);
+      
+      return {
+        categories: result,
+        total: totalStreams,
+        metadata: {
+          playlistName: playlistData._meta?.name || 'Unknown',
+          type,
+          limit,
+          offset
+        }
+      };
+    } catch (error) {
+      console.error('[SimpleDatabaseManager] ❌ Failed to get content by type:', error);
+      return { categories: [], total: 0 };
+    }
+  }
+
+  // Get minimal playlist metadata (for playlists page)
+  async getPlaylistMetadata(playlistId) {
+    try {
+      const store = localforage.createInstance({ name: 'playlist-store' });
+      const playlistData = await store.getItem(playlistId);
+      
+      if (!playlistData) {
+        return null;
+      }
+      
+      // Return only essential metadata, not the full data
+      return {
+        id: playlistId,
+        name: playlistData._meta?.name || 'Unknown',
+        baseUrl: playlistData._meta?.baseUrl || '',
+        username: playlistData._meta?.username || '',
+        statistics: playlistData.statistics || {},
+        loadedAt: playlistData._meta?.loadedAt || Date.now(),
+        categoryCounts: {
+          live: playlistData.categorizedStreams?.live?.length || 0,
+          vod: playlistData.categorizedStreams?.vod?.length || 0,
+          series: playlistData.categorizedStreams?.series?.length || 0
+        }
+      };
+    } catch (error) {
+      console.error('[SimpleDatabaseManager] ❌ Failed to get playlist metadata:', error);
+      return null;
+    }
+  }
+
+  // Caching methods
+  _getFromCache(key) {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+      return cached.data;
+    }
+    this.cache.delete(key);
+    return null;
+  }
+
+  _setCache(key, data) {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+    
+    // Clean up old cache entries
+    if (this.cache.size > 50) {
+      const oldestKey = this.cache.keys().next().value;
+      this.cache.delete(oldestKey);
+    }
+  }
+
+  _clearCache() {
+    this.cache.clear();
+  }
+
   // Utility methods
   async clearAllData() {
     try {
       console.log('[SimpleDatabaseManager] 🧹 Clearing all data...');
       
       await localforage.dropInstance({ name: 'playlist-store' });
+      this._clearCache();
       
       console.log('[SimpleDatabaseManager] ✅ Cleared all data');
       return true;
@@ -298,5 +458,7 @@ export const getAllPlaylists = () => simpleDbManager.getAllPlaylists();
 export const deletePlaylist = (id) => simpleDbManager.deletePlaylist(id);
 export const searchStreams = (query, filters) => simpleDbManager.searchStreams(query, filters);
 export const getCategoryStreams = (playlistId, categoryId, type, limit, offset) => simpleDbManager.getCategoryStreams(playlistId, categoryId, type, limit, offset);
+export const getContentByType = (playlistId, type, options) => simpleDbManager.getContentByType(playlistId, type, options);
+export const getPlaylistMetadata = (playlistId) => simpleDbManager.getPlaylistMetadata(playlistId);
 export const clearAllData = () => simpleDbManager.clearAllData();
 export const getStorageInfo = () => simpleDbManager.getStorageInfo();

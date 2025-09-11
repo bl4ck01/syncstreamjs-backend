@@ -1,13 +1,13 @@
 import { getCurrentProfile } from '@/server/actions';
 import { redirect } from 'next/navigation';
-import PersonalizedHomePage from '@/components/personalized-home-page';
+import SeriesPage from '@/pages/series-page';
 
-export default async function Home() {
+export default async function SeriesPageRoute() {
   const currentProfile = await getCurrentProfile();
   
   if (!currentProfile?.success || !currentProfile?.data) {
     redirect('/profiles');
   }
 
-  return <PersonalizedHomePage profile={currentProfile.data} />;
+  return <SeriesPage profile={currentProfile.data} />;
 }

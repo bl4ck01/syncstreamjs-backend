@@ -1,13 +1,13 @@
 import { getCurrentProfile } from '@/server/actions';
 import { redirect } from 'next/navigation';
-import PersonalizedHomePage from '@/components/personalized-home-page';
+import LiveChannelsPage from '@/pages/live-channels-page';
 
-export default async function Home() {
+export default async function LivePage() {
   const currentProfile = await getCurrentProfile();
   
   if (!currentProfile?.success || !currentProfile?.data) {
     redirect('/profiles');
   }
 
-  return <PersonalizedHomePage profile={currentProfile.data} />;
+  return <LiveChannelsPage profile={currentProfile.data} />;
 }
