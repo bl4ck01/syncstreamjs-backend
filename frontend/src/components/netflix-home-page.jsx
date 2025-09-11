@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo, Suspense, useCallback } from 'reac
 import { useSimplePlaylistStore } from '@/store/simple-playlist';
 import { Play, Tv, Film, MonitorSpeaker, Search, Database, Wifi, WifiOff } from 'lucide-react';
 import { ErrorBoundary } from 'react-error-boundary';
-import NetflixHeader from './netflix-header';
 import NetflixHero from './netflix-hero';
 import NetflixRow from './netflix-row';
 import { NetflixHomePageSkeleton } from './netflix-skeleton-loading';
@@ -301,12 +300,7 @@ export default function NetflixHomePage() {
 
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
-      <div className="min-h-screen bg-black">
-        {/* Netflix Header */}
-        <NetflixHeader 
-          profile={{ name: 'User', email: 'user@example.com' }}
-          onSearch={handleSearch}
-        />
+      <div className="min-h-screen bg-black pt-2">
 
         {/* Hero Section */}
         <div className="pt-16">

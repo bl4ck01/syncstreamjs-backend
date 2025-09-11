@@ -1,7 +1,7 @@
 'use client';
 
 import performanceMonitor from "@/utils/performance-monitor";
-
+import { simpleDbManager } from '@/lib/simple-database';
 
 class DataService {
   constructor() {
@@ -9,6 +9,15 @@ class DataService {
     this.loadingPromises = new Map();
     this.pageSize = 50;
     this.maxCacheSize = 1000;
+    this.cacheTimeout = 5 * 60 * 1000; // 5 minutes
+    this.duckDBAvailable = false;
+    this.stores = {};
+    this.performanceMetrics = {
+      cacheHits: 0,
+      cacheMisses: 0,
+      searchTime: 0,
+      loadTime: 0
+    };
   }
 
   // Generate cache key
@@ -16,13 +25,103 @@ class DataService {
     return `${type}-${JSON.stringify(params)}`;
   }
 
-  // Get data with caching
+  // Initialize enhanced storage
+  async initialize() {
+    try {
+      // Check if DuckDB is available
+      if (typeof window !== 'undefined' && window.DuckDB) {
+        this.duckDBAvailable = true;
+        console.log('[DataService] 🦆 DuckDB is available');
+      } else {
+        console.log('[DataService] 📦 Using LocalForage only');
+      }
+
+      // Configure optimized LocalForage instances
+      await this._setupOptimizedStorage();
+      
+      console.log('[DataService] ✅ Enhanced data service initialized');
+    } catch (error) {
+      console.error('[DataService] ❌ Failed to initialize:', error);
+    }
+  }
+
+  // Setup optimized storage configuration
+  async _setupOptimizedStorage() {
+    const localforage = await import('localforage');
+    
+    // Main playlist data store
+    this.stores.playlist = localforage.default.createInstance({
+      name: 'syncstream-playlists',
+      storeName: 'playlists',
+      driver: [localforage.default.INDEXEDDB, localforage.default.LOCALSTORAGE],
+      size: 100 * 1024 * 1024, // 100MB
+      description: 'Main playlist storage'
+    });
+
+    // User preferences and state
+    this.stores.user = localforage.default.createInstance({
+      name: 'syncstream-users',
+      storeName: 'user-data',
+      driver: [localforage.default.INDEXEDDB, localforage.default.LOCALSTORAGE],
+      size: 10 * 1024 * 1024, // 10MB
+      description: 'User preferences and state'
+    });
+
+    // Search index cache
+    this.stores.search = localforage.default.createInstance({
+      name: 'syncstream-search',
+      storeName: 'search-index',
+      driver: [localforage.default.INDEXEDDB, localforage.default.LOCALSTORAGE],
+      size: 50 * 1024 * 1024, // 50MB
+      description: 'Search index and results cache'
+    });
+
+    // Test all stores
+    await Promise.all([
+      this.stores.playlist.setItem('_test', { ts: Date.now() }),
+      this.stores.user.setItem('_test', { ts: Date.now() }),
+      this.stores.search.setItem('_test', { ts: Date.now() })
+    ]);
+
+    await Promise.all([
+      this.stores.playlist.removeItem('_test'),
+      this.stores.user.removeItem('_test'),
+      this.stores.search.removeItem('_test')
+    ]);
+  }
+
+  // Enhanced cache management with TTL
+  _getFromCache(key) {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+      this.performanceMetrics.cacheHits++;
+      return cached.data;
+    }
+    this.cache.delete(key);
+    this.performanceMetrics.cacheMisses++;
+    return null;
+  }
+
+  _setCache(key, data) {
+    if (this.cache.size >= this.maxCacheSize) {
+      // Remove oldest entry
+      const oldestKey = this.cache.keys().next().value;
+      this.cache.delete(oldestKey);
+    }
+    
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+  }
+
+  // Get data with enhanced caching
   async getData(type, params = {}, fetchFn) {
     const cacheKey = this.generateCacheKey(type, params);
     
     // Check cache first
-    if (this.cache.has(cacheKey)) {
-      const cached = this.cache.get(cacheKey);
+    const cached = this._getFromCache(cacheKey);
+    if (cached) {
       return Array.isArray(cached) ? cached : [];
     }
     
@@ -46,9 +145,10 @@ class DataService {
     }
   }
 
-  // Fetch and cache data
+  // Fetch and cache data with enhanced performance
   async fetchAndCache(cacheKey, fetchFn, params) {
     const measureId = performanceMonitor.startMeasure(`data-${cacheKey}`, 'dataLoad');
+    const startTime = performance.now();
     
     try {
       const data = await fetchFn(params);
@@ -56,19 +156,19 @@ class DataService {
       // Ensure data is an array
       const arrayData = Array.isArray(data) ? data : [];
       
-      // Cache the result
-      this.cache.set(cacheKey, {
-        data: arrayData,
-        timestamp: Date.now(),
-        params
-      });
+      // Cache the result with TTL
+      this._setCache(cacheKey, arrayData);
       
       // Clean up cache if too large
       this.cleanupCache();
       
+      const loadTime = performance.now() - startTime;
+      this.performanceMetrics.loadTime = loadTime;
+      
       performanceMonitor.endMeasure(measureId, { 
         type: 'success',
-        dataSize: arrayData.length
+        dataSize: arrayData.length,
+        loadTime: loadTime.toFixed(2)
       });
       
       return arrayData;
@@ -133,15 +233,62 @@ class DataService {
     }
   }
 
-  // Get personalized recommendations
+  // Get personalized recommendations using real data
   async getRecommendations(profileId, type = 'all', limit = 20) {
     const cacheKey = this.generateCacheKey(`recommendations-${profileId}-${type}`, { limit });
     
     return this.getData(cacheKey, { limit }, async (params) => {
-      // This would typically call your recommendation API
-      // For now, we'll simulate with random selection from cache
-      const mockRecommendations = await this.generateMockRecommendations(profileId, type, params.limit);
-      return mockRecommendations;
+      try {
+        // Get user preferences
+        const userPrefs = await this.stores.user.getItem(`profile-${profileId}`) || {};
+        const watchHistory = userPrefs?.watchHistory || [];
+        const favorites = userPrefs?.favorites || [];
+
+        // Get playlists for content
+        const playlists = await simpleDbManager.getAllPlaylists();
+        const recommendations = [];
+
+        // Extract user preferences
+        const userGenres = this._extractGenresFromHistory(watchHistory.concat(favorites));
+        
+        for (const playlist of playlists) {
+          if (playlist.categorizedStreams) {
+            const targetTypes = type === 'all' ? ['live', 'vod', 'series'] : [type === 'movies' ? 'vod' : type];
+            
+            for (const streamType of targetTypes) {
+              const categories = playlist.categorizedStreams[streamType] || [];
+              for (const category of categories) {
+                // Boost score if category matches user preferences
+                const genreMatch = userGenres.some(genre => 
+                  category.categoryName?.toLowerCase().includes(genre.toLowerCase())
+                );
+                
+                const streams = category.streams || [];
+                for (const stream of streams) {
+                  recommendations.push({
+                    ...stream,
+                    type: streamType,
+                    score: genreMatch ? 2 : 1,
+                    playlistName: playlist._meta?.name || 'Unknown'
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        // Sort by recommendation score and randomness
+        recommendations.sort((a, b) => {
+          const scoreDiff = (b.score || 0) - (a.score || 0);
+          if (scoreDiff !== 0) return scoreDiff;
+          return Math.random() - 0.5; // Add some randomness
+        });
+
+        return recommendations.slice(0, limit);
+      } catch (error) {
+        console.error('[DataService] ❌ Failed to get recommendations:', error);
+        return [];
+      }
     });
   }
 
@@ -167,28 +314,48 @@ class DataService {
     return mockItems;
   }
 
-  // Get recently added content
+  // Get recently added content using real data
   async getRecentlyAdded(type = 'all', limit = 50) {
     const cacheKey = this.generateCacheKey(`recent-${type}`, { limit });
     
     return this.getData(cacheKey, { limit }, async (params) => {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 50));
-      
-      const mockItems = [];
-      for (let i = 0; i < limit; i++) {
-        mockItems.push({
-          id: `recent-${type}-${i}`,
-          name: `New ${type} ${i + 1}`,
-          type: type,
-          rating: (Math.random() * 3 + 7).toFixed(1),
-          year: 2024,
-          addedDate: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-          poster: `/api/poster/recent/${type}/${i}`
+      try {
+        const playlists = await simpleDbManager.getAllPlaylists();
+        const recentItems = [];
+
+        for (const playlist of playlists) {
+          if (playlist.categorizedStreams) {
+            const targetTypes = type === 'all' ? ['live', 'vod', 'series'] : [type === 'movies' ? 'vod' : type];
+            
+            for (const streamType of targetTypes) {
+              const categories = playlist.categorizedStreams[streamType] || [];
+              for (const category of categories) {
+                const streams = category.streams || [];
+                for (const stream of streams) {
+                  recentItems.push({
+                    ...stream,
+                    type: streamType,
+                    playlistName: playlist._meta?.name || 'Unknown',
+                    addedAt: stream.added_at || playlist._meta?.loadedAt || Date.now()
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        // Sort by added timestamp (if available) or use playlist timestamp
+        recentItems.sort((a, b) => {
+          const aTime = a.addedAt || a.added_at || a._meta?.addedAt || 0;
+          const bTime = b.addedAt || b.added_at || b._meta?.addedAt || 0;
+          return bTime - aTime;
         });
+
+        return recentItems.slice(0, limit);
+      } catch (error) {
+        console.error('[DataService] ❌ Failed to get recently added:', error);
+        return [];
       }
-      
-      return mockItems.sort((a, b) => new Date(b.addedDate) - new Date(a.addedDate));
     });
   }
 
@@ -293,7 +460,66 @@ class DataService {
       size: this.cache.size,
       maxCacheSize: this.maxCacheSize,
       loadingPromises: this.loadingPromises.size,
-      hitRate: this.cache.size / (this.cache.size + this.loadingPromises.size)
+      hitRate: this.performanceMetrics.cacheHits / (this.performanceMetrics.cacheHits + this.performanceMetrics.cacheMisses) || 0,
+      performanceMetrics: this.performanceMetrics,
+      duckDBAvailable: this.duckDBAvailable
+    };
+  }
+
+  // Performance monitoring
+  async getPerformanceMetrics() {
+    return {
+      ...this.performanceMetrics,
+      cacheSize: this.cache.size,
+      hitRate: this.performanceMetrics.cacheHits / (this.performanceMetrics.cacheHits + this.performanceMetrics.cacheMisses) || 0,
+      duckDBAvailable: this.duckDBAvailable,
+      storesConfigured: Object.keys(this.stores).length
+    };
+  }
+
+  // Enhanced search with optimized performance
+  async searchOptimized(query, filters = {}) {
+    if (!query || query.trim().length < 2) {
+      return [];
+    }
+
+    const startTime = performance.now();
+    const searchKey = `${query}-${JSON.stringify(filters)}`;
+    
+    // Check cache first
+    const cached = this._getFromCache(searchKey);
+    if (cached) {
+      this.performanceMetrics.searchTime = performance.now() - startTime;
+      return cached;
+    }
+
+    try {
+      // Use simpleDbManager for search with enhanced performance
+      const results = await simpleDbManager.searchStreams(query, filters);
+      
+      const searchTime = performance.now() - startTime;
+      this.performanceMetrics.searchTime = searchTime;
+
+      // Cache results
+      this._setCache(searchKey, results);
+
+      console.log(`[DataService] 🔍 Optimized search completed in ${searchTime.toFixed(2)}ms: ${results.length} results`);
+      return results;
+    } catch (error) {
+      console.error('[DataService] ❌ Optimized search failed:', error);
+      return [];
+    }
+  }
+
+  // Cleanup
+  clearCache() {
+    this.cache.clear();
+    this.loadingPromises.clear();
+    this.performanceMetrics = {
+      cacheHits: 0,
+      cacheMisses: 0,
+      searchTime: 0,
+      loadTime: 0
     };
   }
 }

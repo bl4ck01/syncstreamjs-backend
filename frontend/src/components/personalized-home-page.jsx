@@ -6,7 +6,6 @@ import { dataService } from '@/services/data-service';
 import { usePerformance } from '@/utils/performance-monitor';
 import { ErrorBoundary } from 'react-error-boundary';
 import performanceMonitor from '@/utils/performance-monitor';
-import NetflixHeader from '@/components/netflix-header';
 import NetflixHero from '@/components/netflix-hero';
 import NetflixRow from '@/components/netflix-row';
 import NetflixContentCard from '@/components/netflix-content-card';
@@ -406,12 +405,7 @@ export default function PersonalizedHomePage({ profile }) {
 
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
-      <div className="min-h-screen bg-black">
-        {/* Netflix Header */}
-        <NetflixHeader 
-          profile={profile}
-          onSearch={handleSearch}
-        />
+      <div className="min-h-screen bg-black pt-2">
 
         <div className="pt-16">
           {/* Welcome Section */}

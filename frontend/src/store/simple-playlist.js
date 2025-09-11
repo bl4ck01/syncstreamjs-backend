@@ -238,6 +238,34 @@ export const useSimplePlaylistStore = create(
       };
     },
 
+    // Get optimized content by type (reduces memory usage)
+    getOptimizedContent: memoize(async (playlistId, type = 'vod', options = {}) => {
+      console.log('[SimplePlaylistStore] 🎯 Getting optimized content:', {
+        playlistId,
+        type,
+        options
+      });
+
+      try {
+        // Import the optimized database function
+        const { getContentByType } = await import('@/lib/simple-database');
+        
+        const result = await getContentByType(playlistId, type, options);
+        
+        console.log('[SimplePlaylistStore] ✅ Optimized content loaded:', {
+          type,
+          categoriesCount: result.categories.length,
+          totalStreams: result.total,
+          memoryEfficient: true
+        });
+        
+        return result;
+      } catch (error) {
+        console.error('[SimplePlaylistStore] ❌ Failed to get optimized content:', error);
+        return { categories: [], total: 0 };
+      }
+    }),
+
     // Actions
     initializeStore: async () => {
       console.log('[SimplePlaylistStore] 🎯 initializeStore called');
