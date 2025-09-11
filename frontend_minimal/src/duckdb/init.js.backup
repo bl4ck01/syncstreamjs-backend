@@ -1,0 +1,28 @@
+import * as duckdb from '@duckdb/duckdb-wasm';
+
+let db = null;
+let conn = null;
+
+export async function getDuckDB() {
+  if (db) return { db, conn };
+
+  // Initialize DuckDB with default bundle
+  const bundle = await duckdb.selectBundle({
+    mvp: {
+      mainModule: '/duckdb/duckdb-mvp.wasm',
+      mainWorker: '/duckdb/duckdb-browser-mvp.worker.js'
+    }
+  });
+  
+  const logger = new duckdb.VoidLogger();
+  const worker = new Worker(bundle.mainWorker);
+  db = new duckdb.AsyncDuckDB(logger, worker);
+  await db.instantiate(bundle.mainModule);
+  conn = await db.connect();
+
+  // Load schema
+  const schema = await fetch('/duckdb/schema.sql').then(r => r.text());
+  await conn.query(schema);
+
+  return { db, conn };
+}

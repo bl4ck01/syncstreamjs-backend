@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint)",
+      "Bash(cp:*)",
+      "Bash(taskkill:*)",
+      "Bash(bun run build:*)",
+      "Bash(npm run build:*)",
+      "Bash(bun add:*)",
+      "Bash(bun run lint)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

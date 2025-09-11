@@ -43,20 +43,12 @@ class DuckDBManager {
     console.log('[DuckDBManager] 🔧 Internal initialization starting...');
     
     try {
-      // Select a bundle based on browser checks
-      const bundle = await duckdb.selectBundle({
-        mvp: {
-          mainModule: '/duckdb-mvp.wasm',
-          mainWorker: '/duckdb-mvp.worker.js'
-        },
-        eh: {
-          mainModule: '/duckdb-eh.wasm',
-          mainWorker: '/duckdb-eh.worker.js'
-        }
-      });
-
-      // Create the database worker
-      const worker = new Worker(bundle.mainWorker);
+      // Get available bundles from CDN
+      const bundles = await duckdb.getJsDelivrBundles();
+      const bundle = await duckdb.selectBundle(bundles);
+      
+      // Create worker from Blob - no static files needed
+      const worker = new Worker(URL.createObjectURL(new Blob([bundle.mainWorker], { type: 'text/javascript' })));
       const logger = new duckdb.ConsoleLogger();
       
       // Create the database instance

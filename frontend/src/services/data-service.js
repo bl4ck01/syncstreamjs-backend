@@ -18,6 +18,18 @@ class DataService {
       searchTime: 0,
       loadTime: 0
     };
+    this.initialized = false;
+    this.initPromise = null;
+  }
+
+  // Ensure initialization before any operation
+  async ensureInitialized() {
+    if (!this.initialized) {
+      if (!this.initPromise) {
+        this.initPromise = this.initialize();
+      }
+      await this.initPromise;
+    }
   }
 
   // Generate cache key
@@ -39,9 +51,11 @@ class DataService {
       // Configure optimized LocalForage instances
       await this._setupOptimizedStorage();
       
+      this.initialized = true;
       console.log('[DataService] ✅ Enhanced data service initialized');
     } catch (error) {
       console.error('[DataService] ❌ Failed to initialize:', error);
+      throw error;
     }
   }
 
@@ -117,6 +131,9 @@ class DataService {
 
   // Get data with enhanced caching
   async getData(type, params = {}, fetchFn) {
+    // Ensure service is initialized
+    await this.ensureInitialized();
+    
     const cacheKey = this.generateCacheKey(type, params);
     
     // Check cache first
@@ -395,10 +412,11 @@ class DataService {
       const mockItems = [];
       for (let i = 0; i < limit; i++) {
         const progress = Math.floor(Math.random() * 100);
+        const type = ['movies', 'series'][Math.floor(Math.random() * 2)];
         mockItems.push({
           id: `continue-${profileId}-${i}`,
           name: `Continue Watching ${i + 1}`,
-          type: ['movies', 'series'][Math.floor(Math.random() * 2)],
+          type: type,
           progress: progress,
           episode: type === 'series' ? Math.floor(Math.random() * 10) + 1 : null,
           season: type === 'series' ? Math.floor(Math.random() * 5) + 1 : null,
