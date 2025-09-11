@@ -8,35 +8,22 @@ import { loadPlaylistData } from '../lib/dataService';
 import Link from 'next/link';
 
 export default function HomePage() {
+  // Add client-side check to prevent SSR issues
+  const [isClient, setIsClient] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+  
   const { playlist, categories, setPlaylist, setCategories } = useMetadataStore();
   const { isLoading, errors, setLoading, setError } = useUIStore();
   const [loadingProgress, setLoadingProgress] = useState('');
 
-  useEffect(() => {
-    // Only run on client side
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    // Check if we already have meaningful data
-    const hasData = playlist && (
-      categories.live.length > 0 || 
-      categories.movie.length > 0 || 
-      categories.series.length > 0
-    );
-
-    if (hasData) {
-      console.log('✅ Home page: Using existing cached data');
-      return;
-    }
-
-    // If we have a playlist, try to load from cache
-    if (playlist) {
-      loadDefaultPlaylist(false);
-    }
-  }, [playlist, categories.live.length, categories.movie.length, categories.series.length, loadDefaultPlaylist]);
-
-  async function loadDefaultPlaylist(forceRefresh = false) {
+  const loadDefaultPlaylist = useCallback(async (forceRefresh = false) => {
+    // Don't start loading if already loading
+    if (isLoading) return;
+    
     setLoading(true);
     setLoadingProgress('Loading profile...');
     
@@ -106,9 +93,35 @@ export default function HomePage() {
       setLoading(false);
       setLoadingProgress('');
     }
-  }
+  }, [setLoading, setError, setPlaylist, setCategories, isLoading]);
 
-  if (isLoading) {
+  useEffect(() => {
+    // Only run on client side
+    if (typeof window === 'undefined' || hasLoaded) {
+      return;
+    }
+
+    // Check if we already have meaningful data
+    const hasData = playlist && (
+      categories.live.length > 0 || 
+      categories.movie.length > 0 || 
+      categories.series.length > 0
+    );
+
+    if (hasData) {
+      console.log('✅ Home page: Using existing cached data');
+      setHasLoaded(true);
+      return;
+    }
+
+    // If we have a playlist, try to load from cache
+    if (playlist) {
+      setHasLoaded(true);
+      loadDefaultPlaylist(false);
+    }
+  }, [playlist, hasLoaded, loadDefaultPlaylist]);
+
+  if (!isClient || isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">

@@ -33,14 +33,15 @@ export default function VirtualizedContent({ type, title }) {
     }
   }, [categoryData, categoryCounts, type]);
 
-  // Load categories if they don't exist
+  // Load categories if they don't exist (fallback mechanism)
   useEffect(() => {
     const loadCategories = async () => {
+      // Don't load if we already have categories, no playlist, or already loading
       if (!playlist || categoryData.length > 0 || categoriesLoading) return;
       
       setCategoriesLoading(true);
       try {
-        console.log(`🔍 Loading ${type} categories...`);
+        console.log(`🔍 VirtualizedContent: Loading ${type} categories as fallback...`);
         let categoryData;
         try {
           categoryData = await getCategoriesByType(type, 0, 100); // Load more categories
@@ -51,17 +52,24 @@ export default function VirtualizedContent({ type, title }) {
         
         if (categoryData.length > 0) {
           setCategories(type, categoryData);
-          console.log(`✅ Loaded ${categoryData.length} ${type} categories`);
+          console.log(`✅ VirtualizedContent: Loaded ${categoryData.length} ${type} categories`);
         }
       } catch (error) {
-        console.error(`Failed to load ${type} categories:`, error);
+        console.error(`VirtualizedContent: Failed to load ${type} categories:`, error);
         setError('page', `Failed to load ${type} categories`);
       } finally {
         setCategoriesLoading(false);
       }
     };
 
-    loadCategories();
+    // Only attempt to load categories after a delay to let the page's loadInitialData take priority
+    const timer = setTimeout(() => {
+      if (categoryData.length === 0) {
+        loadCategories();
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
   }, [playlist, categoryData.length, type, setCategories, categoriesLoading, setError]);
 
   const loadCategoryStreams = useCallback(async (category) => {
