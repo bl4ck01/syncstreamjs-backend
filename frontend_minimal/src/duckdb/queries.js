@@ -1,184 +1,169 @@
-import { getDuckDB, isDuckDBAvailable, quickDuckDBCheck, getInMemoryStreams, addInMemoryStreams, clearInMemoryStreams } from './duckdbManager.js';
-import { PAGE_SIZE } from '@/constants';
+import { getConnection } from '../lib/duckdb-manager.js';
 
-// Skip DuckDB initialization if it's clearly not available
-const duckdbSkipped = !quickDuckDBCheck();
-
-// PREPARED STATEMENTS — no SQL injection, faster execution
-const QUERIES = {
-  INSERT_STREAM: null,
-  GET_STREAMS_BY_CATEGORY: null,
-  GET_CATEGORIES_BY_TYPE: null,
-  COUNT_STREAMS: null,
-};
-
-let isPreparing = false;
-
-export async function prepareQueries() {
-  if (isPreparing) return;
-  if (QUERIES.INSERT_STREAM) return; // Already prepared
-  if (duckdbSkipped) return; // Skip if DuckDB is not available
-
-  isPreparing = true;
-  
+export async function getLiveCategories() {
+  const conn = await getConnection();
   try {
-    const { conn } = await getDuckDB();
-    
-    QUERIES.INSERT_STREAM = await conn.prepare(`
-      INSERT INTO streams (stream_id, name, type, category_id, category_name, stream_icon, cover, plot, genre, releaseDate, rating, added, num) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    const result = await conn.query(`
+      SELECT category_id, category_name 
+      FROM live_categories 
+      ORDER BY category_name
     `);
-
-    QUERIES.GET_STREAMS_BY_CATEGORY = await conn.prepare(`
-      SELECT * FROM streams
-      WHERE type = ? AND category_id = ?
-      ORDER BY num ASC
-      LIMIT ? OFFSET ?
-    `);
-
-    QUERIES.GET_CATEGORIES_BY_TYPE = await conn.prepare(`
-      SELECT DISTINCT category_id, category_name
-      FROM streams
-      WHERE type = ?
-      ORDER BY category_name ASC
-      LIMIT ? OFFSET ?
-    `);
-
-    QUERIES.COUNT_STREAMS = await conn.prepare(`
-      SELECT COUNT(*) as count FROM streams
-      WHERE type = ? AND category_id = ?
-    `);
+    return result.toArray().map(row => row.toJSON());
   } catch (error) {
-    console.error('Failed to prepare queries:', error);
-    throw error;
+    console.error('Error getting live categories:', error);
+    return [];
   } finally {
-    isPreparing = false;
+    await conn.close();
   }
 }
 
-export async function insertStreams(streams) {
-  if (!streams || streams.length === 0) return;
-  
-  // If DuckDB is skipped, use in-memory fallback immediately
-  if (duckdbSkipped) {
-    addInMemoryStreams(streams);
-    return;
-  }
-  
+export async function getVodCategories() {
+  const conn = await getConnection();
   try {
-    const dbAvailable = await isDuckDBAvailable();
-    if (!dbAvailable) {
-      // Use in-memory fallback
-      addInMemoryStreams(streams);
-      return;
-    }
-
-    const { conn } = await getDuckDB();
-    await prepareQueries();
-
-    for (const s of streams) {
-      await QUERIES.INSERT_STREAM.run(
-        s.stream_id, s.name, s.type, s.category_id, s.category_name,
-        s.stream_icon || '', s.cover || '', s.plot || '', s.genre || '',
-        s.releaseDate || '', s.rating || '', s.added || '', s.num
-      );
-    }
+    const result = await conn.query(`
+      SELECT category_id, category_name 
+      FROM vod_categories 
+      ORDER BY category_name
+    `);
+    return result.toArray().map(row => row.toJSON());
   } catch (error) {
-    console.error('Failed to insert streams:', error);
-    // Fallback to in-memory storage
-    addInMemoryStreams(streams);
+    console.error('Error getting VOD categories:', error);
+    return [];
+  } finally {
+    await conn.close();
   }
 }
 
-export async function getStreamsByCategory(type, categoryId, offset, limit = PAGE_SIZE) {
-  // If DuckDB is skipped, use in-memory fallback immediately
-  if (duckdbSkipped) {
-    return getStreamsByCategoryFallback(type, categoryId, offset, limit);
-  }
-  
+export async function getSeriesCategories() {
+  const conn = await getConnection();
   try {
-    const dbAvailable = await isDuckDBAvailable();
-    if (!dbAvailable) {
-      // Use in-memory fallback
-      return getStreamsByCategoryFallback(type, categoryId, offset, limit);
-    }
-
-    await prepareQueries();
-    const result = await QUERIES.GET_STREAMS_BY_CATEGORY.query(type, categoryId, limit, offset);
-    return result.toArray();
+    const result = await conn.query(`
+      SELECT category_id, category_name 
+      FROM series_categories 
+      ORDER BY category_name
+    `);
+    return result.toArray().map(row => row.toJSON());
   } catch (error) {
-    console.error('Failed to get streams by category:', error);
-    return getStreamsByCategoryFallback(type, categoryId, offset, limit);
+    console.error('Error getting series categories:', error);
+    return [];
+  } finally {
+    await conn.close();
   }
 }
 
-export async function getCategoriesByType(type, offset, limit) {
-  // If DuckDB is skipped, use in-memory fallback immediately
-  if (duckdbSkipped) {
-    return getCategoriesByTypeFallback(type, offset, limit);
-  }
-  
+export async function getLiveStreamsByCategory(categoryId, limit = 50) {
+  const conn = await getConnection();
   try {
-    const dbAvailable = await isDuckDBAvailable();
-    if (!dbAvailable) {
-      // Use in-memory fallback
-      return getCategoriesByTypeFallback(type, offset, limit);
-    }
-
-    await prepareQueries();
-    const result = await QUERIES.GET_CATEGORIES_BY_TYPE.query(type, limit, offset);
-    return result.toArray();
+    const stmt = await conn.prepare(`
+      SELECT * FROM live_streams 
+      WHERE category_id = ?
+      ORDER BY num
+      LIMIT ?
+    `);
+    const result = await stmt.query(categoryId, limit);
+    return result.toArray().map(row => row.toJSON());
   } catch (error) {
-    console.error('Failed to get categories by type:', error);
-    return getCategoriesByTypeFallback(type, offset, limit);
+    console.error('Error getting live streams:', error);
+    return [];
+  } finally {
+    await conn.close();
   }
 }
 
-export async function countStreams(type, categoryId) {
-  // If DuckDB is skipped, use in-memory fallback immediately
-  if (duckdbSkipped) {
-    return countStreamsFallback(type, categoryId);
-  }
-  
+export async function getVodStreamsByCategory(categoryId, limit = 50) {
+  const conn = await getConnection();
   try {
-    const dbAvailable = await isDuckDBAvailable();
-    if (!dbAvailable) {
-      // Use in-memory fallback
-      return countStreamsFallback(type, categoryId);
+    const stmt = await conn.prepare(`
+      SELECT * FROM vod_streams 
+      WHERE category_id = ?
+      ORDER BY num
+      LIMIT ?
+    `);
+    const result = await stmt.query(categoryId, limit);
+    return result.toArray().map(row => row.toJSON());
+  } catch (error) {
+    console.error('Error getting VOD streams:', error);
+    return [];
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function getSeriesStreamsByCategory(categoryId, limit = 50) {
+  const conn = await getConnection();
+  try {
+    const stmt = await conn.prepare(`
+      SELECT * FROM series_streams 
+      WHERE category_id = ?
+      ORDER BY num
+      LIMIT ?
+    `);
+    const result = await stmt.query(categoryId, limit);
+    return result.toArray().map(row => row.toJSON());
+  } catch (error) {
+    console.error('Error getting series streams:', error);
+    return [];
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function getStatistics() {
+  const conn = await getConnection();
+  try {
+    const result = await conn.query(`SELECT * FROM statistics LIMIT 1`);
+    const rows = result.toArray().map(row => row.toJSON());
+    return rows[0] || null;
+  } catch (error) {
+    console.error('Error getting statistics:', error);
+    return null;
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function searchStreamsByName(query) {
+  const conn = await getConnection();
+  try {
+    const stmt = await conn.prepare(`
+      SELECT *, 'live' as type FROM live_streams WHERE name ILIKE '%' || ? || '%'
+      UNION ALL
+      SELECT *, 'vod' as type FROM vod_streams WHERE name ILIKE '%' || ? || '%'
+      UNION ALL
+      SELECT *, 'series' as type FROM series_streams WHERE name ILIKE '%' || ? || '%'
+      LIMIT 100
+    `);
+    const result = await stmt.query(query, query, query);
+    return result.toArray().map(row => row.toJSON());
+  } catch (error) {
+    console.error('Error searching streams:', error);
+    return [];
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function getStreamCountByCategory(categoryId, type) {
+  const conn = await getConnection();
+  try {
+    let tableName;
+    switch (type) {
+      case 'live': tableName = 'live_streams'; break;
+      case 'vod': tableName = 'vod_streams'; break;
+      case 'series': tableName = 'series_streams'; break;
+      default: return 0;
     }
 
-    await prepareQueries();
-    const result = await QUERIES.COUNT_STREAMS.query(type, categoryId);
+    const stmt = await conn.prepare(`
+      SELECT COUNT(*) as count FROM ${tableName} 
+      WHERE category_id = ?
+    `);
+    const result = await stmt.query(categoryId);
     return result.toArray()[0]?.count || 0;
   } catch (error) {
-    console.error('Failed to count streams:', error);
-    return countStreamsFallback(type, categoryId);
+    console.error('Error getting stream count:', error);
+    return 0;
+  } finally {
+    await conn.close();
   }
-}
-
-// Fallback functions for when DuckDB is not available
-export async function getStreamsByCategoryFallback(type, categoryId, offset, limit = PAGE_SIZE) {
-  const streams = getInMemoryStreams();
-  const filtered = streams
-    .filter(s => s.type === type && s.category_id === categoryId)
-    .sort((a, b) => a.num - b.num)
-    .slice(offset, offset + limit);
-  return filtered;
-}
-
-export async function getCategoriesByTypeFallback(type, offset, limit) {
-  const streams = getInMemoryStreams();
-  const categories = [...new Map(
-    streams
-      .filter(s => s.type === type)
-      .map(s => [s.category_id, { category_id: s.category_id, category_name: s.category_name }])
-  ).values()]
-    .sort((a, b) => a.category_name.localeCompare(b.category_name))
-    .slice(offset, offset + limit);
-  return categories;
-}
-
-export async function countStreamsFallback(type, categoryId) {
-  const streams = getInMemoryStreams();
-  return streams.filter(s => s.type === type && s.category_id === categoryId).length;
 }

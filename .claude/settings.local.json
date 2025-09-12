@@ -7,7 +7,11 @@
       "Bash(bun run build:*)",
       "Bash(npm run build:*)",
       "Bash(bun add:*)",
-      "Bash(bun run lint)"
+      "Bash(bun run lint)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(bun run dev:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

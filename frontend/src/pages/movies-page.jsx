@@ -129,8 +129,8 @@ export default function MoviesPage() {
     }
   };
 
-  // Show loading state
-  if (!isInitialized || loading) {
+  // Show loading state only when not initialized
+  if (!isInitialized) {
     return <NetflixHomePageSkeleton />;
   }
 

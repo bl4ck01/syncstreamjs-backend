@@ -1,224 +1,286 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useMetadataStore } from '../store/useMetadataStore';
-import { useUIStore } from '../store/useUIStore';
-import { getCurrentProfileWithPlaylist, getPlaylistAction } from '../lib/actions';
-import { loadPlaylistData } from '../lib/dataService';
+import { useState } from 'react';
+import usePlaylistStore from '../store/playlistStore';
 import Link from 'next/link';
+import { Play, Film, Tv, RefreshCw, AlertCircle, Check } from 'lucide-react';
 
 export default function HomePage() {
-  // Add client-side check to prevent SSR issues
-  const [isClient, setIsClient] = useState(false);
-  const [hasLoaded, setHasLoaded] = useState(false);
-  
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-  
-  const { playlist, categories, setPlaylist, setCategories } = useMetadataStore();
-  const { isLoading, errors, setLoading, setError } = useUIStore();
-  const [loadingProgress, setLoadingProgress] = useState('');
+  const {
+    baseUrl,
+    username,
+    password,
+    setCredentials,
+    fetchAndIngestData,
+    isLoading,
+    error,
+    lastFetchedAt,
+    statistics,
+    categories,
+    clearError
+  } = usePlaylistStore();
 
-  const loadDefaultPlaylist = useCallback(async (forceRefresh = false) => {
-    // Don't start loading if already loading
-    if (isLoading) return;
+  const [formError, setFormError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     
-    setLoading(true);
-    setLoadingProgress('Loading profile...');
-    
-    try {
-      // Get current profile with default playlist
-      const profileResult = await getCurrentProfileWithPlaylist();
-      
-      if (!profileResult.success || !profileResult.data) {
-        setError('home', 'No profile found. Please login first.');
-        return;
-      }
-
-      const profile = profileResult.data;
-      const defaultPlaylistId = profile.default_playlist_id;
-
-      if (!defaultPlaylistId) {
-        setError('home', 'No default playlist set for this profile.');
-        return;
-      }
-
-      setLoadingProgress('Loading playlist details...');
-      
-      // Get playlist details
-      const playlistResult = await getPlaylistAction(defaultPlaylistId);
-      
-      if (!playlistResult.success || !playlistResult.data) {
-        setError('home', 'Failed to load playlist details.');
-        return;
-      }
-
-      const playlistData = playlistResult.data;
-      
-      // Set playlist in store
-      setPlaylist({
-        id: playlistData.id,
-        name: playlistData.name,
-        url: playlistData.url,
-        username: playlistData.username,
-        password: playlistData.password
-      });
-
-      setLoadingProgress('Loading streams data...');
-      
-      // Use data service with DuckDB-first approach
-      const result = await loadPlaylistData(playlistData, forceRefresh);
-      
-      if (!result.success) {
-        setError('home', result.error || 'Failed to load playlist data');
-        return;
-      }
-      
-      // Set categories from result
-      setCategories('live', result.categories.live);
-      setCategories('movie', result.categories.movie);
-      setCategories('series', result.categories.series);
-
-      const source = result.fromCache ? (result.isFallback ? 'cache (fallback)' : 'cache') : 'proxy';
-      console.log(`Playlist loaded successfully from ${source}:`, {
-        playlist: playlistData.name,
-        ...result.counts
-      });
-
-    } catch (error) {
-      console.error('Failed to load playlist:', error);
-      setError('home', error.message || 'Failed to load playlist');
-    } finally {
-      setLoading(false);
-      setLoadingProgress('');
-    }
-  }, [setLoading, setError, setPlaylist, setCategories, isLoading]);
-
-  useEffect(() => {
-    // Only run on client side
-    if (typeof window === 'undefined' || hasLoaded) {
+    // Validate form
+    if (!baseUrl.trim() || !username.trim() || !password.trim()) {
+      setFormError('Please fill in all fields');
       return;
     }
 
-    // Check if we already have meaningful data
-    const hasData = playlist && (
-      categories.live.length > 0 || 
-      categories.movie.length > 0 || 
-      categories.series.length > 0
-    );
+    setFormError('');
+    clearError();
+    await fetchAndIngestData();
+  };
 
-    if (hasData) {
-      console.log('✅ Home page: Using existing cached data');
-      setHasLoaded(true);
-      return;
-    }
-
-    // If we have a playlist, try to load from cache
-    if (playlist) {
-      setHasLoaded(true);
-      loadDefaultPlaylist(false);
-    }
-  }, [playlist, hasLoaded, loadDefaultPlaylist]);
-
-  if (!isClient || isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
-          <h1 className="text-4xl font-bold text-gray-800 mb-4">DuckStream</h1>
-          <div className="space-y-4">
-            <div className="animate-spin rounded-full border-2 border-gray-300 border-t-blue-500 w-8 h-8 mx-auto"></div>
-            <p className="text-gray-600">{loadingProgress || 'Loading...'}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (errors.home) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
-          <h1 className="text-4xl font-bold text-gray-800 mb-4">DuckStream</h1>
-          <div className="space-y-4">
-            <div className="text-red-500 mb-2">⚠️ Error</div>
-            <p className="text-gray-600 mb-4">{errors.home}</p>
-            <button 
-              onClick={loadDefaultPlaylist}
-              className="w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition-colors"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const hasData = statistics || categories.live.length > 0 || categories.vod.length > 0 || categories.series.length > 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
-        <h1 className="text-4xl font-bold text-gray-800 mb-4">DuckStream</h1>
-        <p className="text-gray-600 mb-8">
-          Memory-Optimized, Virtualized, Low-End Friendly IPTV Frontend
-        </p>
-        
-        {playlist ? (
-          <div className="space-y-4">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <p className="text-green-800 font-medium">✅ {playlist.name}</p>
-              <p className="text-green-600 text-sm">Playlist loaded and ready!</p>
+    <div className="min-h-screen bg-black text-white">
+      {/* Header */}
+      <header className="bg-black/80 backdrop-blur-md border-b border-gray-800 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-red-600 rounded"></div>
+              <h1 className="text-2xl font-bold">STREAM</h1>
             </div>
-            
-            <div className="space-y-2">
-              <button 
-                onClick={() => loadDefaultPlaylist(true)}
-                className="w-full bg-orange-500 text-white py-2 px-4 rounded hover:bg-orange-600 transition-colors text-sm"
+            {statistics && (
+              <div className="text-sm text-gray-400">
+                {statistics.totalItems?.toLocaleString()} titles available
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        {!hasData ? (
+          /* Login Form */
+          <div className="max-w-md mx-auto">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold mb-2">Welcome to STREAM</h2>
+              <p className="text-gray-400">Enter your playlist credentials to get started</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Playlist URL
+                </label>
+                <input
+                  type="url"
+                  value={baseUrl}
+                  onChange={(e) => setCredentials(e.target.value, username, password)}
+                  placeholder="https://example.com/playlist.m3u"
+                  className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-white"
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Username
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setCredentials(baseUrl, e.target.value, password)}
+                  placeholder="Enter username"
+                  className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-white"
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setCredentials(baseUrl, username, e.target.value)}
+                  placeholder="Enter password"
+                  className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-white"
+                  disabled={isLoading}
+                />
+              </div>
+
+              {(formError || error) && (
+                <div className="flex items-center space-x-2 p-3 bg-red-900/30 border border-red-700 rounded-lg">
+                  <AlertCircle className="w-5 h-5 text-red-400" />
+                  <span className="text-red-400 text-sm">{formError || error}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2"
               >
-                🔄 Refresh from Proxy
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    <span>Loading...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-5 h-5" />
+                    <span>Load Playlist</span>
+                  </>
+                )}
               </button>
-            </div>
-            
-            <div className="grid grid-cols-1 gap-3">
-              <Link 
-                href="/live" 
-                className="bg-blue-500 text-white py-3 px-4 rounded hover:bg-blue-600 transition-colors text-lg font-semibold"
-              >
-                📺 Live Channels ({categories.live.length})
-              </Link>
-              <Link 
-                href="/movies" 
-                className="bg-green-500 text-white py-3 px-4 rounded hover:bg-green-600 transition-colors text-lg font-semibold"
-              >
-                🎬 Movies ({categories.movie.length})
-              </Link>
-              <Link 
-                href="/series" 
-                className="bg-purple-500 text-white py-3 px-4 rounded hover:bg-purple-600 transition-colors text-lg font-semibold"
-              >
-                📺 TV Series ({categories.series.length})
-              </Link>
-            </div>
+            </form>
           </div>
         ) : (
-          <div className="space-y-4">
-            <p className="text-gray-500 mb-4">No playlist loaded</p>
-            <div className="space-y-2">
-              <button 
-                onClick={loadDefaultPlaylist}
-                className="w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition-colors"
+          /* Dashboard */
+          <div>
+            {/* Stats Section */}
+            {statistics && (
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold mb-4">Your Library</h2>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-gray-900 rounded-lg p-6">
+                    <div className="text-3xl font-bold text-blue-400">
+                      {statistics.totalLive?.toLocaleString() || 0}
+                    </div>
+                    <div className="text-gray-400 flex items-center space-x-1">
+                      <Tv className="w-4 h-4" />
+                      <span>Live Channels</span>
+                    </div>
+                  </div>
+                  <div className="bg-gray-900 rounded-lg p-6">
+                    <div className="text-3xl font-bold text-green-400">
+                      {statistics.totalVod?.toLocaleString() || 0}
+                    </div>
+                    <div className="text-gray-400 flex items-center space-x-1">
+                      <Film className="w-4 h-4" />
+                      <span>Movies</span>
+                    </div>
+                  </div>
+                  <div className="bg-gray-900 rounded-lg p-6">
+                    <div className="text-3xl font-bold text-purple-400">
+                      {statistics.totalSeries?.toLocaleString() || 0}
+                    </div>
+                    <div className="text-gray-400 flex items-center space-x-1">
+                      <Tv className="w-4 h-4" />
+                      <span>TV Series</span>
+                    </div>
+                  </div>
+                  <div className="bg-gray-900 rounded-lg p-6">
+                    <div className="text-3xl font-bold text-white">
+                      {statistics.totalItems?.toLocaleString() || 0}
+                    </div>
+                    <div className="text-gray-400">Total Titles</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Categories Section */}
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold">Browse Content</h2>
+                {lastFetchedAt && (
+                  <div className="text-sm text-gray-400 flex items-center space-x-1">
+                    <Check className="w-4 h-4 text-green-400" />
+                    <span>
+                      Last updated: {new Date(lastFetchedAt).toLocaleTimeString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Live TV */}
+                {categories.live.length > 0 && (
+                  <Link href="/live">
+                    <div className="bg-gradient-to-br from-blue-900/50 to-blue-800/30 border border-blue-700 rounded-lg p-6 hover:from-blue-800/50 hover:to-blue-700/30 transition-all cursor-pointer group">
+                      <div className="flex items-center justify-between mb-4">
+                        <Tv className="w-8 h-8 text-blue-400" />
+                        <div className="text-sm text-blue-400 bg-blue-900/50 px-2 py-1 rounded">
+                          {categories.live.length} categories
+                        </div>
+                      </div>
+                      <h3 className="text-xl font-bold mb-2 group-hover:text-blue-300 transition-colors">
+                        Live TV
+                      </h3>
+                      <p className="text-gray-400 text-sm">
+                        Watch live television channels from around the world
+                      </p>
+                    </div>
+                  </Link>
+                )}
+
+                {/* Movies */}
+                {categories.vod.length > 0 && (
+                  <Link href="/movies">
+                    <div className="bg-gradient-to-br from-green-900/50 to-green-800/30 border border-green-700 rounded-lg p-6 hover:from-green-800/50 hover:to-green-700/30 transition-all cursor-pointer group">
+                      <div className="flex items-center justify-between mb-4">
+                        <Film className="w-8 h-8 text-green-400" />
+                        <div className="text-sm text-green-400 bg-green-900/50 px-2 py-1 rounded">
+                          {categories.vod.length} categories
+                        </div>
+                      </div>
+                      <h3 className="text-xl font-bold mb-2 group-hover:text-green-300 transition-colors">
+                        Movies
+                      </h3>
+                      <p className="text-gray-400 text-sm">
+                        Browse our extensive collection of movies
+                      </p>
+                    </div>
+                  </Link>
+                )}
+
+                {/* TV Series */}
+                {categories.series.length > 0 && (
+                  <Link href="/series">
+                    <div className="bg-gradient-to-br from-purple-900/50 to-purple-800/30 border border-purple-700 rounded-lg p-6 hover:from-purple-800/50 hover:to-purple-700/30 transition-all cursor-pointer group">
+                      <div className="flex items-center justify-between mb-4">
+                        <Tv className="w-8 h-8 text-purple-400" />
+                        <div className="text-sm text-purple-400 bg-purple-900/50 px-2 py-1 rounded">
+                          {categories.series.length} categories
+                        </div>
+                      </div>
+                      <h3 className="text-xl font-bold mb-2 group-hover:text-purple-300 transition-colors">
+                        TV Series
+                      </h3>
+                      <p className="text-gray-400 text-sm">
+                        Catch up on your favorite TV shows and series
+                      </p>
+                    </div>
+                  </Link>
+                )}
+              </div>
+            </div>
+
+            {/* Refresh Button */}
+            <div className="text-center">
+              <button
+                onClick={fetchAndIngestData}
+                disabled={isLoading}
+                className="bg-gray-800 hover:bg-gray-700 disabled:bg-gray-900 disabled:cursor-not-allowed text-white font-medium py-2 px-6 rounded-lg transition-colors flex items-center space-x-2 mx-auto"
               >
-                Load Default Playlist
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Refreshing...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Refresh Data</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
         )}
-      </div>
-      
-      <div className="mt-8 text-center text-gray-500 text-sm">
-        <p>Built with Next.js, DuckDB, and Zustand</p>
-        <p className="mt-2">Optimized for 200k+ streams on low-end devices</p>
-      </div>
+      </main>
     </div>
   );
 }
