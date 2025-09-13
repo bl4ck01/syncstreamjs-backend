@@ -1,18 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { getCategoriesPage, getStreamsPageByCategory } from '../../lib/storage/queries.js';
-import { fetchPlaylistFromProxy } from '../../lib/proxy.js';
-import { importFromProxyResponse } from '../../lib/storage/importer.js';
-import { db } from '../../lib/storage/db.js';
+import { getCategoriesPage, getStreamsPageByCategory } from '@/lib/storage/queries.js';
+import { importFromProxyResponse } from '@/lib/storage/importer.js';
+import { db } from '@/lib/storage/db.js';
 import HeroSection from '@/components/ui/hero-section.jsx';
 import ContentRow from '@/components/ui/content-row.jsx';
+import { fetchPlaylistFromProxy } from '@/lib/proxy.js';
 
-export default function IPTVPage() {
-  const searchParams = useSearchParams();
-  const streamType = searchParams.get('type') || 'live';
-  
+const IPTVContent = ({ streamType, pageTitle, pageDescription }) => {
   const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -157,27 +153,14 @@ export default function IPTVPage() {
     );
   }
 
-  const getPageTitle = () => {
-    switch (streamType) {
-      case 'vod': return 'Movies';
-      case 'series': return 'TV Shows';
-      case 'live': 
-      default: return 'Live TV';
-    }
-  };
-
   return (
     <div className="bg-black text-white min-h-screen">
       {featuredContent && <HeroSection featuredContent={featuredContent} />}
 
       <div className={`relative z-10 ${featuredContent ? '-mt-32' : 'pt-20'}`}>
         <div className="px-4 md:px-16 py-8">
-          <h1 className="text-4xl font-bold text-white mb-2">{getPageTitle()}</h1>
-          <p className="text-gray-400 text-lg">
-            {streamType === 'live' && 'Watch live television channels from around the world'}
-            {streamType === 'vod' && 'Browse our extensive collection of movies'}
-            {streamType === 'series' && 'Catch up on your favorite TV shows and series'}
-          </p>
+          <h1 className="text-4xl font-bold text-white mb-2">{pageTitle}</h1>
+          <p className="text-gray-400 text-lg">{pageDescription}</p>
         </div>
 
         <CategoryRows categories={categories} streamType={streamType} />
@@ -201,7 +184,7 @@ export default function IPTVPage() {
       </div>
     </div>
   );
-}
+};
 
 // Simplified CategoryRows component
 function CategoryRows({ categories, streamType }) {
@@ -287,7 +270,7 @@ function CategoryRows({ categories, streamType }) {
                 streams={streams}
                 isLarge={index === 0}
                 onLoadMore={() => loadMoreStreamsForCategory(category.id, category.category_name)}
-                hasMore={streams.length % 20 === 0} // Simple heuristic
+                hasMore={streams.length % 20 === 0}
                 isLoadingMore={loadingCategories.has(category.id)}
               />
             ) : (
@@ -304,3 +287,5 @@ function CategoryRows({ categories, streamType }) {
     </div>
   );
 }
+
+export default IPTVContent;

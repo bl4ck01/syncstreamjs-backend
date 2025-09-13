@@ -42,7 +42,7 @@ export default function HomePage() {
       <div className="relative z-10 -mt-32">
         <ContentRow title="Trending Now" streams={trending} isLarge={true} />
         <ContentRow title="New Releases" streams={newReleases} />
-        <ContentRow title="Popular on Netflix" streams={popular} />
+        <ContentRow title="Popular on StreamFlix" streams={popular} />
         
         {/* Call to action for IPTV */}
         <div className="px-4 md:px-16 py-12">
@@ -52,7 +52,7 @@ export default function HomePage() {
               Access thousands of live channels, movies, and series from around the world
             </p>
             <a 
-              href="/iptv?type=live" 
+              href="/live" 
               className="bg-white text-red-600 px-8 py-3 rounded font-semibold text-lg hover:bg-gray-100 transition-colors inline-block"
             >
               Start Watching Live TV

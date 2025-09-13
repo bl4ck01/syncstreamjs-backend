@@ -7,6 +7,7 @@ import ContentCard from './content-card.jsx';
 const ContentRow = ({ title, streams, isLarge = false, onLoadMore, hasMore = false, isLoadingMore = false }) => {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
+  const [isRowHovered, setIsRowHovered] = useState(false);
   const scrollContainerRef = useRef(null);
 
   const scroll = (direction) => {
@@ -70,6 +71,8 @@ const ContentRow = ({ title, streams, isLarge = false, onLoadMore, hasMore = fal
           ref={scrollContainerRef}
           className="flex space-x-4 overflow-x-auto scrollbar-hide px-4 md:px-16 pb-4"
           onScroll={handleScroll}
+          onMouseEnter={() => setIsRowHovered(true)}
+          onMouseLeave={() => setIsRowHovered(false)}
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {streams.map((stream, index) => (
@@ -77,6 +80,7 @@ const ContentRow = ({ title, streams, isLarge = false, onLoadMore, hasMore = fal
               key={stream.stream_id || stream.id || index}
               stream={stream}
               isLarge={isLarge}
+              isRowHovered={isRowHovered}
             />
           ))}
           

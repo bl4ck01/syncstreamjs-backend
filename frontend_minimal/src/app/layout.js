@@ -13,13 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "NETFLIX",
-  description: "Watch TV shows and movies online. Stream unlimited.",
+  title: "STREAMFLIX - Watch TV Shows & Movies Online",
+  description: "Stream unlimited TV shows, movies, and live TV. Watch anywhere, anytime.",
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-white`}
       >
