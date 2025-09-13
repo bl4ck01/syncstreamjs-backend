@@ -23,35 +23,7 @@ export const getCategoriesPage = async (streamType, page = 1, limit = 20) => {
 };
 
 export const getStreamsPageByCategory = async (categoryId, page = 1, limit = 20) => {
-  console.log(`🔍 Querying streams for categoryId: "${categoryId}"`);
-  
   const offset = (page - 1) * limit;
-  
-  // Check total streams in database
-  const totalStreamsInDb = await db.streams.count();
-  console.log(`📊 Total streams in database: ${totalStreamsInDb}`);
-  
-  if (totalStreamsInDb === 0) {
-    console.log(`❌ No streams found in database - import may have failed`);
-    return {
-      streams: [],
-      pagination: { page, limit, total: 0, totalPages: 0 }
-    };
-  }
-  
-  // Sample a few streams to see their structure
-  const allStreams = await db.streams.limit(5).toArray();
-  console.log(`📊 Sample stream data:`, allStreams.map(s => ({ id: s.id, categoryId: s.categoryId, stream_type: s.stream_type, name: s.name })));
-  
-  // Lightweight check for debugging if needed
-  if (totalStreamsInDb < 100) {
-    const streamsByType = {};
-    const allStreamTypes = await db.streams.toArray();
-    allStreamTypes.forEach(stream => {
-      streamsByType[stream.stream_type] = (streamsByType[stream.stream_type] || 0) + 1;
-    });
-    console.log(`📊 Streams by type:`, streamsByType);
-  }
   
   const streams = await db.streams
     .where('categoryId')
@@ -61,8 +33,6 @@ export const getStreamsPageByCategory = async (categoryId, page = 1, limit = 20)
     .toArray();
 
   const totalCount = await db.streams.where('categoryId').equals(categoryId).count();
-  
-  console.log(`📈 Query result: Found ${totalCount} total streams, returning ${streams.length} streams for categoryId "${categoryId}"`);
 
   return {
     streams,
@@ -73,4 +43,16 @@ export const getStreamsPageByCategory = async (categoryId, page = 1, limit = 20)
       totalPages: Math.ceil(totalCount / limit),
     },
   };
+};
+
+// Simplified batch operations for better performance
+export const getCategoryStreamsBatch = async (categoryIds, limit = 20) => {
+  const results = {};
+  
+  for (const categoryId of categoryIds) {
+    const result = await getStreamsPageByCategory(categoryId, 1, limit);
+    results[categoryId] = result;
+  }
+  
+  return results;
 };
