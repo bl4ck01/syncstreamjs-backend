@@ -19,7 +19,7 @@ const Header = () => {
       <div className="flex items-center justify-between px-4 md:px-16 py-6">
         {/* Logo */}
         <div className="flex items-center md:space-x-12">
-          <Link href="/" className="flex items-center space-x-3">
+          {/* <Link href="/" className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-700 rounded-lg shadow-lg flex items-center justify-center">
               <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z"/>
@@ -31,6 +31,11 @@ const Header = () => {
               </h1>
               <p className="text-xs text-gray-400 -mt-1">Watch Anywhere</p>
             </div>
+          </Link> */}
+
+          <Link href="/" className="flex items-center">
+            <div className="w-5 h-5 bg-red-600 rounded text-xl flex items-center justify-end font-bold pr-0.5">F</div>
+            <h1 className="text-xl text-white font-bold">Player</h1>
           </Link>
 
           {/* Navigation - Hidden on mobile */}
@@ -40,8 +45,8 @@ const Header = () => {
                 key={item.name}
                 href={item.href}
                 className={`text-sm font-semibold transition-all duration-200 hover:text-white ${pathname === item.href
-                    ? 'text-white scale-105'
-                    : 'text-gray-300'
+                  ? 'text-white scale-105'
+                  : 'text-gray-300'
                   }`}
               >
                 {item.name}
@@ -75,8 +80,8 @@ const Header = () => {
               key={item.name}
               href={item.href}
               className={`text-sm font-semibold whitespace-nowrap py-1 transition-colors hover:text-white ${pathname === item.href
-                  ? 'text-white border-b-2 border-red-500'
-                  : 'text-gray-300'
+                ? 'text-white border-b-2 border-red-500'
+                : 'text-gray-300'
                 }`}
             >
               {item.name}
