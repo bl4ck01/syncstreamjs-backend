@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import ContentCard from './content-card.jsx';
 
 const ContentRow = ({ title, streams, isLarge = false, onLoadMore, hasMore = false, isLoadingMore = false }) => {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(true);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const [isRowHovered, setIsRowHovered] = useState(false);
   const scrollContainerRef = useRef(null);
 
@@ -33,12 +33,46 @@ const ContentRow = ({ title, streams, isLarge = false, onLoadMore, hasMore = fal
     );
   };
 
+  // Update scroll state when streams change or component mounts
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // Small delay to ensure DOM is updated
+    setTimeout(() => {
+      setCanScrollLeft(container.scrollLeft > 0);
+      setCanScrollRight(
+        container.scrollLeft < container.scrollWidth - container.clientWidth
+      );
+    }, 100);
+  }, [streams, hasMore]);
+
+  // Initial mount effect
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // Check if content overflows initially
+    const checkOverflow = () => {
+      setCanScrollRight(container.scrollWidth > container.clientWidth);
+    };
+
+    // Small delay to ensure DOM is fully rendered
+    setTimeout(checkOverflow, 200);
+    
+    // Add resize observer to handle window resizing
+    const resizeObserver = new ResizeObserver(checkOverflow);
+    resizeObserver.observe(container);
+    
+    return () => resizeObserver.disconnect();
+  }, []);
+
   if (!streams || streams.length === 0) {
     return null;
   }
 
   return (
-    <div className="relative group mb-8">
+    <div className="relative group mb-8 overflow-hidden">
       {/* Row title */}
       <h2 className="text-white text-xl md:text-2xl font-bold mb-4 px-4 md:px-16">
         {title}
@@ -46,24 +80,28 @@ const ContentRow = ({ title, streams, isLarge = false, onLoadMore, hasMore = fal
 
       {/* Scroll container */}
       <div className="relative">
-        {/* Left scroll button */}
+        {/* Left scroll area */}
         {canScrollLeft && (
-          <button
-            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-all duration-300"
+          <div 
+            className="absolute left-[-32px] top-0 bottom-0 w-32 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer"
             onClick={() => scroll('left')}
           >
-            <ChevronLeft className="h-6 w-6" />
-          </button>
+            <div className="absolute left-8 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-3 shadow-lg shadow-black/50">
+              <ChevronLeft className="h-6 w-6" />
+            </div>
+          </div>
         )}
 
-        {/* Right scroll button */}
+        {/* Right scroll area */}
         {canScrollRight && (
-          <button
-            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-all duration-300"
+          <div 
+            className="absolute right-[-32px] top-0 bottom-0 w-32 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer"
             onClick={() => scroll('right')}
           >
-            <ChevronRight className="h-6 w-6" />
-          </button>
+            <div className="absolute right-8 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-3 shadow-lg shadow-black/50">
+              <ChevronRight className="h-6 w-6" />
+            </div>
+          </div>
         )}
 
         {/* Content container */}
@@ -75,6 +113,15 @@ const ContentRow = ({ title, streams, isLarge = false, onLoadMore, hasMore = fal
           onMouseLeave={() => setIsRowHovered(false)}
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
+          {/* Left scroll indicator shadow */}
+          {canScrollLeft && (
+            <div className="absolute left-[-32px] top-0 bottom-0 w-32 bg-gradient-to-r from-black/70 via-black/40 to-transparent z-15 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          )}
+          
+          {/* Right scroll indicator shadow */}
+          {canScrollRight && (
+            <div className="absolute right-[-32px] top-0 bottom-0 w-32 bg-gradient-to-l from-black/70 via-black/40 to-transparent z-15 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          )}
           {streams.map((stream, index) => (
             <ContentCard
               key={stream.stream_id || stream.id || index}
