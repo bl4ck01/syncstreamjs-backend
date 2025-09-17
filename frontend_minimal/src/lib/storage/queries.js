@@ -56,3 +56,50 @@ export const getCategoryStreamsBatch = async (categoryIds, limit = 20) => {
   
   return results;
 };
+
+// Optimized search queries
+export const searchStreams = async (query, streamType = null, limit = 50) => {
+  const searchLower = query.toLowerCase();
+  
+  let dbQuery = db.streams;
+  if (streamType) {
+    // Use compound index for stream_type filtering
+    const categoryIds = await db.categories
+      .where('stream_type')
+      .equals(streamType)
+      .primaryKeys();
+    
+    dbQuery = dbQuery.where('categoryId').anyOf(categoryIds);
+  }
+  
+  const streams = await dbQuery
+    .filter(stream => 
+      stream.name && stream.name.toLowerCase().includes(searchLower)
+    )
+    .limit(limit)
+    .toArray();
+  
+  return streams;
+};
+
+// Get statistics for a stream type
+export const getStreamTypeStats = async (streamType) => {
+  const categoryIds = await db.categories
+    .where('stream_type')
+    .equals(streamType)
+    .primaryKeys();
+  
+  const totalStreams = await db.streams
+    .where('categoryId')
+    .anyOf(categoryIds)
+    .count();
+  
+  const totalCategories = categoryIds.length;
+  
+  return {
+    streamType,
+    totalCategories,
+    totalStreams,
+    averageStreamsPerCategory: totalStreams / Math.max(1, totalCategories),
+  };
+};

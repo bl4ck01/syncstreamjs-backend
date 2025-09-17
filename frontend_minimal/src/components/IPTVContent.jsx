@@ -2,11 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getCategoriesPage, getStreamsPageByCategory } from '@/lib/storage/queries.js';
-import { importFromProxyResponse } from '@/lib/storage/importer.js';
-import { db } from '@/lib/storage/db.js';
 import HeroSection from '@/components/ui/hero-section.jsx';
 import ContentRow from '@/components/ui/content-row.jsx';
-import { fetchPlaylistFromProxy } from '@/lib/proxy.js';
+import { iptvImportManager } from '@/lib/import-manager.js';
 
 const IPTVContent = ({
   streamType,
@@ -65,55 +63,80 @@ const IPTVContent = ({
     }
   }, [currentPage, hasMoreCategories, isLoadingMore, loadCategories]);
 
-  // Initialize data
+  // Initialize data - only run once on mount with proper deduplication
   useEffect(() => {
+    let isMounted = true;
+    let initializationStarted = false;
+    
     const initializeData = async () => {
+      // Prevent multiple initializations
+      if (initializationStarted) {
+        console.log('🚫 Initialization already started, skipping...');
+        return;
+      }
+      initializationStarted = true;
+      
       try {
+        if (!isMounted) return;
         setIsLoading(true);
 
-        // Check if we need to import
+        // Check if we have data in database first
+        const { db } = await import('@/lib/storage/db.js');
         const categoryCount = await db.categories.count();
-        const streamCount = await db.streams.count();
+        const hasData = categoryCount > 0;
 
-        const shouldImport = categoryCount === 0 ||
-          (categoryCount > 0 && streamCount === 0);
+        console.log('📊 Database check for', streamType, ':', { categoryCount, hasData });
 
-        if (shouldImport) {
-          setIsImporting(true);
-          const baseUrl = localStorage.getItem('iptv_base_url') || 'http://line.ottcst.com';
-          const username = localStorage.getItem('iptv_username') || 'AmroussO';
-          const password = localStorage.getItem('iptv_password') || 'IIFNYI3LTQ';
-
-          const response = await fetchPlaylistFromProxy(baseUrl, username, password);
-          const text = await response.text();
-
-          await importFromProxyResponse(text, (msg, pct) => {
+        if (hasData) {
+          // Load data from database
+          if (!isMounted) return;
+          await loadCategories(1, false);
+        } else {
+          // No data, import from proxy
+          console.log('🌐 Starting import for', streamType);
+          const result = await iptvImportManager.startImport((msg, pct) => {
+            if (!isMounted) return;
+            setIsImporting(true);
             setImportMessage(msg);
             setImportProgress(pct);
           });
 
+          if (!isMounted) return;
           setIsImporting(false);
+
+          // Load categories after import, unless import was skipped
+          if (!result.skipped) {
+            await loadCategories(1, false);
+          } else {
+            // Import was skipped, try to load existing data
+            await loadCategories(1, false);
+          }
         }
 
-        // Load categories
-        await loadCategories(1, false);
-
       } catch (err) {
-        setError(err);
-        setIsImporting(false);
-        setIsLoading(false);
+        console.error('Initialization error:', err);
+        if (isMounted) {
+          setError(err);
+          setIsImporting(false);
+          setIsLoading(false);
+        }
       }
     };
 
+    console.log('🔄 Component mounting for streamType:', streamType);
     initializeData();
-  }, [streamType, loadCategories]);
+
+    return () => {
+      console.log('🛑 Component unmounting for streamType:', streamType);
+      isMounted = false;
+    };
+  }, [streamType]); // Only depend on streamType, not loadCategories
 
   if (isImporting) {
     return (
       <div className="flex items-center justify-center h-screen flex-col bg-black text-white pt-20">
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold mb-2">Loading Your Playlist</h2>
-          <p className="text-gray-400 text-lg">Initializing streaming library...</p>
+          <h2 className="text-3xl font-bold mb-2">Downloading Your Playlist</h2>
         </div>
 
         <div className="w-96 bg-gray-800 rounded-full h-2 mb-6">
@@ -133,7 +156,7 @@ const IPTVContent = ({
       <div className="flex items-center justify-center h-screen bg-black text-white pt-20">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-red-600 mx-auto mb-4"></div>
-          <p className="text-xl">Loading content...</p>
+          <p className="text-xl">Downloading your playlist...</p>
         </div>
       </div>
     );
@@ -251,7 +274,7 @@ function CategoryRows({ categories, streamType }) {
 
   return (
     <div className="space-y-8">
-      {categories.map((category, index) => {
+      {categories.map((category) => {
         const streams = categoryStreams[category.id] || [];
         const isLoading = loadingCategories.has(category.id);
 
@@ -272,7 +295,7 @@ function CategoryRows({ categories, streamType }) {
               <ContentRow
                 title={`${category.category_name} (${streams.length})`}
                 streams={streams}
-                isLarge={index === 0}
+                streamType={streamType}
                 onLoadMore={() => loadMoreStreamsForCategory(category.id, category.category_name)}
                 hasMore={streams.length % 20 === 0}
                 isLoadingMore={loadingCategories.has(category.id)}

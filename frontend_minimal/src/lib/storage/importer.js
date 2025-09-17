@@ -12,13 +12,18 @@ export const importFromProxyResponse = (jsonString, onProgress) => {
     
     // Bulk insert categories
     const bulkInsertCategories = async (categories, streamType) => {
-      const categoryDocs = categories.map(category => ({
-        id: `${streamType}_${category.category_id}`,
-        category_id: category.category_id,
-        category_name: category.category_name,
-        stream_type: streamType,
-        stream_count: category.stream_count,
-      }));
+      const categoryDocs = categories.map(category => {
+        const streamCount = category.stream_count || (category.streams ? category.streams.length : 0);
+        console.log(`📂 Creating category: ${category.category_name} with ${streamCount} streams`);
+        
+        return {
+          id: `${streamType}_${category.category_id}`,
+          category_id: category.category_id,
+          category_name: category.category_name,
+          stream_type: streamType,
+          stream_count: streamCount,
+        };
+      });
       
       await db.categories.bulkPut(categoryDocs);
       totalCategories += categories.length;
@@ -51,6 +56,8 @@ export const importFromProxyResponse = (jsonString, onProgress) => {
         if (totalStreams % BULK_SIZE === 0) {
           console.log(`✅ Bulk inserted ${streamDocs.length} streams (total: ${totalStreams})`);
         }
+      } else {
+        console.warn(`⚠️ No valid stream docs found in chunk of ${streams.length} streams for category ${categoryId}`);
       }
     };
 
@@ -66,8 +73,26 @@ export const importFromProxyResponse = (jsonString, onProgress) => {
     const hasCategories = jsonData.data && jsonData.data.categories;
     const hasCategorizedStreams = jsonData.data && jsonData.data.categorizedStreams;
     
+    console.log('🔍 Data structure analysis:');
+    console.log('  - hasCategories:', hasCategories);
+    console.log('  - hasCategorizedStreams:', hasCategorizedStreams);
+    
+    if (hasCategorizedStreams) {
+      console.log('  - categorizedStreams keys:', Object.keys(jsonData.data.categorizedStreams));
+      console.log('  - categorizedStreams series count:', jsonData.data.categorizedStreams.series ? jsonData.data.categorizedStreams.series.length : 0);
+    }
+    
+    if (hasCategories) {
+      console.log('  - categories keys:', Object.keys(jsonData.data.categories));
+      console.log('  - categories series count:', jsonData.data.categories.series ? jsonData.data.categories.series.length : 0);
+    }
+    
+    // Use categorizedStreams for streaming data, fall back to categories for metadata
     const categoriesData = hasCategorizedStreams ? jsonData.data.categorizedStreams : 
                           hasCategories ? jsonData.data.categories : null;
+    
+    // Also get the basic categories for metadata if categorizedStreams doesn't have complete data
+    const basicCategoriesData = hasCategories ? jsonData.data.categories : null;
     
     if (!categoriesData) {
       reject(new Error('No categories data found'));
@@ -82,7 +107,15 @@ export const importFromProxyResponse = (jsonString, onProgress) => {
       for (const streamType of streamTypes) {
         console.log(`🎯 Processing ${streamType} categories...`);
         
-        const categories = categoriesData[streamType];
+        // Get categories from categorizedStreams (with streams) or fall back to basic categories
+        let categories = categoriesData[streamType];
+        
+        // If categorizedStreams doesn't have this streamType but basicCategories does, use basic categories
+        if ((!categories || categories.length === 0) && basicCategoriesData && basicCategoriesData[streamType]) {
+          categories = basicCategoriesData[streamType];
+          console.log(`🔄 Using basic categories for ${streamType}:`, categories.length);
+        }
+        
         if (!Array.isArray(categories)) {
           console.warn(`⚠️ ${streamType} categories is not an array:`, typeof categories);
           continue;
@@ -102,17 +135,20 @@ export const importFromProxyResponse = (jsonString, onProgress) => {
         for (const category of categories) {
           let streams = null;
           
-          // Check for streams in category.streams
+          // Check for streams in category.streams (this is what the proxy provides in categorizedStreams)
           if (category.streams && Array.isArray(category.streams)) {
             streams = category.streams;
+            console.log(`📺 Found ${streams.length} streams in category.streams for: ${category.category_name}`);
           }
-          // Check for streams in category itself
+          // Check for streams in category itself (fallback for other data structures)
           else if (Array.isArray(category)) {
             streams = category;
+            console.log(`📺 Found ${streams.length} streams in category array for: ${category.category_name || 'Unknown'}`);
           }
           // Check for streams in other possible properties
           else if (category.items && Array.isArray(category.items)) {
             streams = category.items;
+            console.log(`📺 Found ${streams.length} streams in category.items for: ${category.category_name || 'Unknown'}`);
           }
 
           if (streams && streams.length > 0) {
@@ -128,6 +164,8 @@ export const importFromProxyResponse = (jsonString, onProgress) => {
                 onProgress(`Imported ${totalStreams} streams`, progress);
               }
             }
+          } else {
+            console.log(`⚠️ No streams found for category: ${category.category_name} (ID: ${category.category_id})`);
           }
         }
       }

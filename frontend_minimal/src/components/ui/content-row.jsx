@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import ContentCard from './content-card.jsx';
 
-const ContentRow = ({ title, streams, isLarge = false, onLoadMore, hasMore = false, isLoadingMore = false }) => {
+const ContentRow = ({ title, streams, streamType, onLoadMore, hasMore = false, isLoadingMore = false }) => {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [isRowHovered, setIsRowHovered] = useState(false);
@@ -126,7 +126,7 @@ const ContentRow = ({ title, streams, isLarge = false, onLoadMore, hasMore = fal
             <ContentCard
               key={stream.stream_id || stream.id || index}
               stream={stream}
-              isLarge={isLarge}
+              streamType={streamType}
               isRowHovered={isRowHovered}
             />
           ))}
@@ -134,7 +134,7 @@ const ContentRow = ({ title, streams, isLarge = false, onLoadMore, hasMore = fal
           {/* Load More Button */}
           {hasMore && onLoadMore && (
             <div className={`flex-shrink-0 flex items-center justify-center ${
-              isLarge ? 'w-[300px] h-[169px]' : 'w-[200px] h-[300px]'
+              streamType === 'live' ? 'w-[200px]' : 'w-[200px] aspect-[2/3]'
             } bg-gray-800 rounded-md border-2 border-dashed border-gray-600 hover:border-gray-400 transition-colors`}>
               <button
                 onClick={onLoadMore}

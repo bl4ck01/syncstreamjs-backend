@@ -31,12 +31,12 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Addr:            getEnv("PROXY_ADDR", ":8081"),
-		ReadTimeout:     30 * time.Second,
-		WriteTimeout:    30 * time.Second,
+		ReadTimeout:     60 * time.Second,
+		WriteTimeout:    60 * time.Second, // Increased for large JSON payloads
 		IdleTimeout:     120 * time.Second,
 		ShutdownTimeout: 30 * time.Second,
 		MaxConcurrent:   500,
-		MaxRetries:      3,
+		MaxRetries:      3, // Back to original for faster retries
 		RetryDelay:      2 * time.Second,
 	}
 }
@@ -398,15 +398,27 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 2: Fetch all data concurrently
-	fetchCtx, cancelFetch := context.WithTimeout(ctx, 20*time.Second)
+	// Step 2: Fetch all data concurrently with reasonable timeout
+	fetchCtx, cancelFetch := context.WithTimeout(ctx, 30*time.Second) // Balanced timeout
 	defer cancelFetch()
 
 	normalized, err := s.fetchAllData(fetchCtx, baseURL, username, password, whoAmI.UserInfo)
 	if err != nil {
+		// Even if there's an error, check if we got partial data
+		if normalized != nil {
+			// Return partial data with a warning message
+			s.writeJSON(w, http.StatusPartialContent, ProxyResponse{
+				Success: true,
+				Message: fmt.Sprintf("Partial data retrieved due to some errors: %v", err),
+				Data:    normalized,
+			})
+			return
+		}
+
+		// No data at all - return error
 		s.writeJSON(w, http.StatusInternalServerError, ProxyResponse{
 			Success: false,
-			Message: fmt.Sprintf("Failed to fetch data: %v", err),
+			Message: fmt.Sprintf("Failed to fetch any data: %v", err),
 			Data:    nil,
 		})
 		return
@@ -420,6 +432,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 // fetchAllData concurrently fetches all required data
 func (s *Server) fetchAllData(ctx context.Context, baseURL, username, password string, userInfo XtreamUserInfo) (*NormalizedData, error) {
+	var hasErrors bool
 	type job struct {
 		key    string
 		params map[string]string
@@ -479,13 +492,26 @@ func (s *Server) fetchAllData(ctx context.Context, baseURL, username, password s
 	// Temporary storage for raw data
 	rawData := make(map[string]interface{})
 
-	// Process results
+	// Process results with enhanced error handling
+	successCount := 0
+	totalJobs := len(jobs)
 	for res := range results {
 		if res.err != nil {
-			log.Printf("Error fetching %s: %v", res.key, res.err)
-			continue // Continue with partial data
+			log.Printf("Error fetching %s after all retries: %v", res.key, res.err)
+			hasErrors = true
+		} else {
+			rawData[res.key] = res.val
+			successCount++
+			log.Printf("Successfully fetched %s", res.key)
 		}
-		rawData[res.key] = res.val
+	}
+
+	// Log summary of fetch results
+	log.Printf("Fetch completed: %d/%d requests succeeded", successCount, totalJobs)
+
+	// If we have very low success rate, log a warning but continue with partial data
+	if successCount < totalJobs/2 {
+		log.Printf("Warning: Low success rate (%d/%d), returning partial data", successCount, totalJobs)
 	}
 
 	// Process categories with error handling
@@ -583,6 +609,11 @@ func (s *Server) fetchAllData(ctx context.Context, baseURL, username, password s
 		len(normalized.Categories.VOD),
 		len(normalized.Categories.Series))
 
+	// Always return the normalized data, even if it's partial
+	// The caller will decide whether to return it as partial data or error
+	if hasErrors {
+		return normalized, fmt.Errorf("partial data: %d/%d requests succeeded", successCount, totalJobs)
+	}
 	return normalized, nil
 }
 
@@ -780,13 +811,20 @@ func (s *Server) buildPlayerURL(baseURL, username, password string, params map[s
 	return u.String(), nil
 }
 
-// fetchJSON makes HTTP request and decodes JSON response with retry logic for 404 errors
-func (s *Server) fetchJSON(ctx context.Context, url string, target any) error {
-	var lastErr error
+// fetchJSON makes HTTP request and decodes JSON response with simple retry logic
+func (s *Server) fetchJSON(ctx context.Context, url string, target any) (err error) {
+	// Top-level recover to prevent server crash from any panic in this function
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("PANIC RECOVERED in fetchJSON for URL %s: %v", url, r)
+			err = fmt.Errorf("unexpected internal error: %v", r)
+		}
+	}()
 
+	var lastErr error
 	for attempt := 0; attempt <= s.config.MaxRetries; attempt++ {
 		if attempt > 0 {
-			// Calculate exponential backoff delay
+			// Simple linear backoff delay
 			delay := time.Duration(attempt) * s.config.RetryDelay
 			log.Printf("Retrying request to %s after %v (attempt %d/%d)", url, delay, attempt, s.config.MaxRetries)
 
@@ -808,6 +846,7 @@ func (s *Server) fetchJSON(ctx context.Context, url string, target any) error {
 
 		resp, err := s.client.Do(req)
 		if err != nil {
+			// Simple retry for network errors
 			lastErr = fmt.Errorf("request failed: %w", err)
 			if attempt == s.config.MaxRetries {
 				return lastErr
