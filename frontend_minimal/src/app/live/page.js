@@ -2,10 +2,8 @@ import IPTVContent from '@/components/IPTVContent.jsx';
 
 export default function LivePage() {
   return (
-    <IPTVContent 
-      streamType="live" 
-      pageTitle="Live TV" 
-      pageDescription="Watch live television channels from around the world"
+    <IPTVContent
+      streamType="live"
     />
   );
 }

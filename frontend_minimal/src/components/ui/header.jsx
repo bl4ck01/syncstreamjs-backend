@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Search, Bell, User } from 'lucide-react';
+import { Search, Bell, User, Radio } from 'lucide-react';
 
 const Header = () => {
   const pathname = usePathname();
@@ -16,26 +16,12 @@ const Header = () => {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black via-black/90 to-transparent transition-all duration-300">
-      <div className="flex items-center justify-between px-4 md:px-16 py-6">
+      <div className="flex items-center justify-between px-4 md:px-16 pb-6 pt-4">
         {/* Logo */}
         <div className="flex items-center md:space-x-12">
-          {/* <Link href="/" className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-700 rounded-lg shadow-lg flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-red-500 to-red-600 bg-clip-text text-transparent">
-                STREAMFLIX
-              </h1>
-              <p className="text-xs text-gray-400 -mt-1">Watch Anywhere</p>
-            </div>
-          </Link> */}
-
-          <Link href="/" className="flex items-center">
-            <div className="w-5 h-5 bg-red-600 rounded text-xl flex items-center justify-end font-bold pr-0.5">F</div>
-            <h1 className="text-xl text-white font-bold">Player</h1>
+          <Link href="/" className="flex items-center gap-1 text-lime-400">
+            <Radio className="w-7 h-7" />
+            <h1 className="text-xl font-bold tracking-wide">Vidoo</h1>
           </Link>
 
           {/* Navigation - Hidden on mobile */}

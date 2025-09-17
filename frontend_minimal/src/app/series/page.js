@@ -4,8 +4,6 @@ export default function SeriesPage() {
   return (
     <IPTVContent 
       streamType="series" 
-      pageTitle="TV Shows" 
-      pageDescription="Catch up on your favorite TV shows and series"
     />
   );
 }
